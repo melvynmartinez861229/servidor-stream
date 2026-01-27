@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Servidor Stream",
+  "outputfilename": "servidor-stream",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Servidor Stream Team",
+    "email": "stream@server.local"
+  },
+  "info": {
+    "companyName": "Servidor Stream",
+    "productName": "Servidor Stream",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright © 2026",
+    "comments": "Sistema de Gestión de Streams SRT para Producción Audiovisual"
+  }
+}

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NDI Server Stream</title>
+    <link rel="stylesheet" href="/src/styles/main.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <i class="fas fa-broadcast-tower"></i>
+                    <h1>SPRINT GAMING - NDI Server Stream</h1>
+                </div>
+            </div>
+            <div class="header-center">
+                <div class="status-indicators">
+                    <div class="status-item" id="wsStatus">
+                        <i class="fas fa-plug"></i>
+                        <span>WebSocket: <strong>Puerto 8765</strong></span>
+                    </div>
+                    <div class="status-item" id="channelCount">
+                        <i class="fas fa-tv"></i>
+                        <span>Canales: <strong>0</strong></span>
+                    </div>
+                    <div class="status-item" id="clientCount">
+                        <i class="fas fa-users"></i>
+                        <span>Clientes: <strong>0</strong></span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="btn btn-icon" id="btnSettings" title="Configuración">
+                    <i class="fas fa-cog"></i>
+                </button>
+                <button class="btn btn-icon" id="btnToggleLogs" title="Ver Logs">
+                    <i class="fas fa-terminal"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Canales</h2>
+                    <button class="btn btn-primary btn-sm" id="btnAddChannel">
+                        <i class="fas fa-plus"></i> Nuevo
+                    </button>
+                </div>
+                <div class="channel-list" id="channelList">
+                    <!-- Los canales se agregan dinámicamente -->
+                    <div class="empty-state" id="emptyChannels">
+                        <i class="fas fa-tv"></i>
+                        <p>No hay canales configurados</p>
+                        <button class="btn btn-outline btn-sm" id="btnAddChannelEmpty">
+                            Agregar Canal
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Content Area -->
+            <section class="content-area">
+                <!-- Channel Grid -->
+                <div class="channel-grid" id="channelGrid">
+                    <!-- Las tarjetas de canal se agregan dinámicamente -->
+                </div>
+
+                <!-- Welcome/Empty State -->
+                <div class="welcome-state" id="welcomeState">
+                    <div class="welcome-icon">
+                        <i class="fas fa-broadcast-tower"></i>
+                    </div>
+                    <h1>NDI Server Stream</h1>
+                    <h2>Sprint Gaming</h2>
+                    <p>Sistema de gestión de streams NDI para producción audiovisual</p>
+                    <div class="welcome-features">
+                        <div class="feature">
+                            <i class="fas fa-video"></i>
+                            <span>Gestión de múltiples canales NDI</span>
+                        </div>
+                        <div class="feature">
+                            <i class="fas fa-network-wired"></i>
+                            <span>Comunicación WebSocket con Aximmetry</span>
+                        </div>
+                        <div class="feature">
+                            <i class="fas fa-eye"></i>
+                            <span>Previsualizaciones en tiempo real</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-lg" id="btnGetStarted">
+                        <i class="fas fa-plus"></i> Crear Primer Canal
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Logs Panel -->
+        <aside class="logs-panel" id="logsPanel">
+            <div class="logs-header">
+                <h3><i class="fas fa-terminal"></i> Logs de Actividad</h3>
+                <div class="logs-actions">
+                    <button class="btn btn-icon btn-sm" id="btnClearLogs" title="Limpiar">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <button class="btn btn-icon btn-sm" id="btnCloseLogs" title="Cerrar">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="logs-filter">
+                <select id="logFilter">
+                    <option value="all">Todos</option>
+                    <option value="INFO">Info</option>
+                    <option value="ERROR">Errores</option>
+                    <option value="DEBUG">Debug</option>
+                </select>
+            </div>
+            <div class="logs-content" id="logsContent">
+                <!-- Los logs se agregan dinámicamente -->
+            </div>
+        </aside>
+
+        <!-- Modals -->
+        <!-- Modal: Agregar/Editar Canal -->
+        <div class="modal" id="channelModal">
+            <div class="modal-overlay"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="channelModalTitle">Nuevo Canal</h3>
+                    <button class="btn btn-icon" id="btnCloseChannelModal">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="channelForm">
+                        <input type="hidden" id="channelId">
+                        
+                        <div class="form-group">
+                            <label for="channelLabel">Nombre del Canal</label>
+                            <input type="text" id="channelLabel" placeholder="Ej: Canal Principal" required>
+                            <small class="form-help">Identificador para este slot de reproducción</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="channelNDIName">Nombre del Stream NDI</label>
+                            <input type="text" id="channelNDIName" placeholder="Ej: NDI_CANAL_1">
+                            <small class="form-help">Nombre con el que Aximmetry recibirá el stream (auto-generado si se deja vacío)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="channelPreviewEnabled" checked>
+                                <span>Habilitar previsualización</span>
+                            </label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="btnCancelChannel">Cancelar</button>
+                    <button class="btn btn-primary" id="btnSaveChannel">
+                        <i class="fas fa-save"></i> Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Configuración -->
+        <div class="modal" id="settingsModal">
+            <div class="modal-overlay"></div>
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h3>Configuración</h3>
+                    <button class="btn btn-icon" id="btnCloseSettingsModal">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="settings-tabs">
+                        <button class="tab-btn active" data-tab="general">General</button>
+                        <button class="tab-btn" data-tab="ffmpeg">FFmpeg</button>
+                        <button class="tab-btn" data-tab="preview">Previews</button>
+                        <button class="tab-btn" data-tab="network">Red</button>
+                    </div>
+
+                    <div class="tab-content active" id="tab-general">
+                        <div class="form-group">
+                            <label for="settingsTheme">Tema</label>
+                            <select id="settingsTheme">
+                                <option value="dark">Oscuro</option>
+                                <option value="light">Claro</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="settingsAutoRestart" checked>
+                                <span>Reinicio automático en caso de fallos</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="tab-ffmpeg">
+                        <div class="form-group">
+                            <label for="settingsFFmpegPath">Ruta de FFmpeg</label>
+                            <div class="input-with-button">
+                                <input type="text" id="settingsFFmpegPath" value="ffmpeg">
+                                <button type="button" class="btn btn-outline" id="btnSelectFFmpeg">
+                                    <i class="fas fa-folder-open"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="settingsVideoBitrate">Bitrate de Video</label>
+                                <input type="text" id="settingsVideoBitrate" value="10M">
+                            </div>
+                            <div class="form-group">
+                                <label for="settingsAudioBitrate">Bitrate de Audio</label>
+                                <input type="text" id="settingsAudioBitrate" value="192k">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsFrameRate">Frame Rate por defecto</label>
+                            <select id="settingsFrameRate">
+                                <option value="24">24 fps</option>
+                                <option value="25">25 fps</option>
+                                <option value="30" selected>30 fps</option>
+                                <option value="50">50 fps</option>
+                                <option value="60">60 fps</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsTestPattern">Video Patrón de Prueba</label>
+                            <div class="input-with-button">
+                                <input type="text" id="settingsTestPattern" placeholder="patron.mp4">
+                                <button type="button" class="btn btn-outline" id="btnSelectTestPattern">
+                                    <i class="fas fa-folder-open"></i>
+                                </button>
+                            </div>
+                            <small class="form-hint">Video loop para pruebas de conexión SRT</small>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="tab-preview">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="settingsPreviewWidth">Ancho</label>
+                                <input type="number" id="settingsPreviewWidth" value="320">
+                            </div>
+                            <div class="form-group">
+                                <label for="settingsPreviewHeight">Alto</label>
+                                <input type="number" id="settingsPreviewHeight" value="180">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsPreviewQuality">Calidad (%)</label>
+                            <input type="range" id="settingsPreviewQuality" min="20" max="100" value="60">
+                            <span id="previewQualityValue">60%</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsPreviewInterval">Intervalo de actualización (ms)</label>
+                            <input type="number" id="settingsPreviewInterval" value="2000">
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="tab-network">
+                        <div class="form-group">
+                            <label for="settingsWSPort">Puerto WebSocket</label>
+                            <input type="number" id="settingsWSPort" value="8765">
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsNDIPrefix">Prefijo NDI</label>
+                            <input type="text" id="settingsNDIPrefix" value="NDI_SERVER_">
+                        </div>
+                        <div class="info-box">
+                            <i class="fas fa-info-circle"></i>
+                            <p>Los clientes Aximmetry se conectan via WebSocket al puerto configurado para solicitar streams de video.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="btnCancelSettings">Cancelar</button>
+                    <button class="btn btn-primary" id="btnSaveSettings">
+                        <i class="fas fa-save"></i> Guardar Configuración
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Confirmación -->
+        <div class="modal" id="confirmModal">
+            <div class="modal-overlay"></div>
+            <div class="modal-content modal-small">
+                <div class="modal-header">
+                    <h3 id="confirmTitle">Confirmar</h3>
+                </div>
+                <div class="modal-body">
+                    <p id="confirmMessage">¿Está seguro?</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="btnConfirmCancel">Cancelar</button>
+                    <button class="btn btn-danger" id="btnConfirmOk">Confirmar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div class="toast-container" id="toastContainer"></div>
+    </div>
+
+    <script type="module" src="/src/js/main.js"></script>
+</body>
+</html>

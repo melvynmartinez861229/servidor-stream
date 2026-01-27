@@ -1,0 +1,47 @@
+# Binarios
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Carpetas de compilación
+/build/bin/
+/frontend/dist/
+/frontend/node_modules/
+
+# Archivos de prueba
+*.test
+*.out
+
+# Archivos de configuración local
+*.local
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporales
+tmp/
+temp/
+*.tmp
+
+# Dependencias
+vendor/
+
+# Cache
+.cache/
+__pycache__/
