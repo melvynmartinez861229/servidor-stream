@@ -6,7 +6,6 @@
 *.dylib
 
 # Carpetas de compilación
-/build/bin/
 /frontend/dist/
 /frontend/node_modules/
 
