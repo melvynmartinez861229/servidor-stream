@@ -33,6 +33,8 @@ export function SelectTestPatternPath():Promise<string>;
 
 export function SelectVideoPath():Promise<string>;
 
+export function SetChannelVideoSettings(arg1:string,arg2:string,arg3:number):Promise<void>;
+
 export function StartChannel(arg1:string):Promise<void>;
 
 export function StopChannel(arg1:string):Promise<void>;

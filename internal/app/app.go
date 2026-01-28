@@ -241,6 +241,18 @@ func (a *App) PlayTestPattern(channelID string) error {
 	// Actualizar el archivo actual a patrón
 	a.channelManager.SetCurrentFile(channelID, a.config.TestPatternPath)
 
+	// Parsear resolución del canal
+	width, height := 1920, 1080 // Valores por defecto
+	if ch.Resolution != "" {
+		fmt.Sscanf(ch.Resolution, "%dx%d", &width, &height)
+	}
+
+	// Usar FPS del canal o el por defecto
+	frameRate := ch.FrameRate
+	if frameRate == 0 {
+		frameRate = a.config.DefaultFrameRate
+	}
+
 	// Configurar y iniciar FFmpeg con el patrón
 	ffmpegConfig := ffmpeg.StreamConfig{
 		ChannelID:     ch.ID,
@@ -249,9 +261,13 @@ func (a *App) PlayTestPattern(channelID string) error {
 		SRTPort:       ch.SRTPort,
 		VideoBitrate:  a.config.DefaultVideoBitrate,
 		AudioBitrate:  a.config.DefaultAudioBitrate,
-		FrameRate:     a.config.DefaultFrameRate,
+		FrameRate:     frameRate,
+		Width:         width,
+		Height:        height,
 		Loop:          true, // El patrón siempre en loop
 	}
+
+	a.AddLog("INFO", fmt.Sprintf("Iniciando FFmpeg: %dx%d @ %dfps", width, height, frameRate), channelID)
 
 	err = a.ffmpegManager.Start(ffmpegConfig)
 	if err != nil {
@@ -288,6 +304,18 @@ func (a *App) SelectTestPatternPath() (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// SetChannelVideoSettings establece la resolución y FPS de un canal
+func (a *App) SetChannelVideoSettings(channelID, resolution string, frameRate int) error {
+	err := a.channelManager.SetVideoSettings(channelID, resolution, frameRate)
+	if err != nil {
+		return err
+	}
+
+	a.AddLog("INFO", fmt.Sprintf("Configuración de video actualizada: %s @ %dfps", resolution, frameRate), channelID)
+	runtime.EventsEmit(a.ctx, "channel:updated", nil)
+	return nil
 }
 
 // StopChannel detiene el stream de un canal

@@ -149,21 +149,22 @@ function setupWailsEvents() {
             if (data.currentFile) {
                 state.channels[index].currentFile = data.currentFile;
             }
-            // Actualizar solo los elementos que cambiaron, no todo el grid
-            updateChannelCardStatus(data.channelId, state.channels[index]);
+            // Re-renderizar todo el grid y lista para asegurar sincronización
+            renderChannelGrid();
             renderChannelList();
         }
     });
     
     // Progreso del canal
     window.runtime.EventsOn('channel:progress', (data) => {
+        console.log('[PROGRESS]', data.channelId, data.progress);
         const statsRow = document.querySelector(`[data-channel-id="${data.channelId}"] .channel-stats-row`);
         if (statsRow && data.progress) {
             const framesEl = statsRow.querySelector('.stat-frames');
             const fpsEl = statsRow.querySelector('.stat-fps');
             const timeEl = statsRow.querySelector('.stat-time');
             if (framesEl) framesEl.textContent = data.progress.frame || 0;
-            if (fpsEl) fpsEl.textContent = `${data.progress.fps?.toFixed(1) || 0} fps`;
+            if (fpsEl) fpsEl.textContent = `${data.progress.fps?.toFixed(1) || 0}`;
             if (timeEl) timeEl.textContent = data.progress.time || '00:00:00';
         }
     });
@@ -322,12 +323,28 @@ function renderChannelGrid() {
             <div class="channel-card-body">
                 <div class="channel-stats-row">
                     <span class="stat"><i class="fas fa-film"></i> <span class="stat-frames">0</span></span>
-                    <span class="stat"><i class="fas fa-tachometer-alt"></i> <span class="stat-fps">0</span> fps</span>
+                    <span class="stat"><i class="fas fa-tachometer-alt"></i> <span class="stat-fps">0</span> <small>fps</small></span>
                     <span class="stat"><i class="fas fa-clock"></i> <span class="stat-time">00:00:00</span></span>
                 </div>
                 <div class="channel-info-row">
                     <span class="label">Puerto SRT</span>
                     <span class="value srt-port">${channel.srtPort || 9000}</span>
+                </div>
+                <div class="channel-info-row">
+                    <span class="label">Video</span>
+                    <span class="value video-settings">
+                        <select class="inline-select resolution-select" onchange="updateVideoSettings('${channel.id}')" ${channel.status === 'active' ? 'disabled' : ''}>
+                            <option value="1920x1080" ${channel.resolution === '1920x1080' ? 'selected' : ''}>1080p</option>
+                            <option value="1280x720" ${channel.resolution === '1280x720' ? 'selected' : ''}>720p</option>
+                            <option value="3840x2160" ${channel.resolution === '3840x2160' ? 'selected' : ''}>4K</option>
+                        </select>
+                        <select class="inline-select fps-select" onchange="updateVideoSettings('${channel.id}')" ${channel.status === 'active' ? 'disabled' : ''}>
+                            <option value="25" ${channel.frameRate === 25 ? 'selected' : ''}>25fps</option>
+                            <option value="30" ${channel.frameRate === 30 ? 'selected' : ''}>30fps</option>
+                            <option value="50" ${channel.frameRate === 50 ? 'selected' : ''}>50fps</option>
+                            <option value="60" ${channel.frameRate === 60 ? 'selected' : ''}>60fps</option>
+                        </select>
+                    </span>
                 </div>
                 <div class="channel-info-row">
                     <span class="label">Estado</span>
@@ -359,17 +376,22 @@ function renderChannelGrid() {
 
 // Actualizar solo el estado de una tarjeta sin reconstruir todo el grid
 function updateChannelCardStatus(channelId, channel) {
+    console.log('[UPDATE] updateChannelCardStatus', channelId, 'status:', channel.status);
     const card = document.querySelector(`[data-channel-id="${channelId}"]`);
-    if (!card) return;
+    if (!card) {
+        console.log('[UPDATE] Card not found for', channelId);
+        return;
+    }
     
     // Actualizar indicador de estado (LED)
     const indicator = card.querySelector('.status-indicator');
     if (indicator) {
         indicator.className = `status-indicator ${channel.status}`;
+        console.log('[UPDATE] LED updated to', channel.status);
     }
     
-    // Actualizar texto de estado (segunda fila de info)
-    const statusText = card.querySelector('.value.status-active, .value.status-inactive, .value.status-error');
+    // Actualizar texto de estado (buscar por clase que empiece con status-)
+    const statusText = card.querySelector('[class*="status-active"], [class*="status-inactive"], [class*="status-error"]');
     if (statusText) {
         statusText.className = `value status-${channel.status}`;
         statusText.textContent = getStatusText(channel.status);
@@ -389,6 +411,7 @@ function updateChannelCardStatus(channelId, channel) {
     if (footer) {
         const firstBtn = footer.querySelector('button:first-child');
         if (firstBtn) {
+            console.log('[UPDATE] Updating button, status is:', channel.status);
             if (channel.status === 'active') {
                 firstBtn.className = 'btn btn-danger btn-sm';
                 firstBtn.title = 'Detener';
@@ -462,6 +485,35 @@ async function playTestPattern(channelId) {
     } catch (error) {
         console.error('Error emitiendo patrón:', error);
         showToast('error', 'Error', error.message || 'No se pudo emitir el patrón. ¿Está configurada la ruta?');
+    }
+}
+
+async function updateVideoSettings(channelId) {
+    const card = document.querySelector(`[data-channel-id="${channelId}"]`);
+    if (!card) return;
+    
+    const resolutionSelect = card.querySelector('.resolution-select');
+    const fpsSelect = card.querySelector('.fps-select');
+    
+    if (!resolutionSelect || !fpsSelect) return;
+    
+    const resolution = resolutionSelect.value;
+    const frameRate = parseInt(fpsSelect.value);
+    
+    try {
+        await window.go.app.App.SetChannelVideoSettings(channelId, resolution, frameRate);
+        
+        // Actualizar estado local
+        const index = state.channels.findIndex(c => c.id === channelId);
+        if (index !== -1) {
+            state.channels[index].resolution = resolution;
+            state.channels[index].frameRate = frameRate;
+        }
+        
+        showToast('success', 'Configuración actualizada', `Video: ${resolution} @ ${frameRate}fps`);
+    } catch (error) {
+        console.error('Error actualizando configuración:', error);
+        showToast('error', 'Error', error.message || 'No se pudo actualizar la configuración');
     }
 }
 

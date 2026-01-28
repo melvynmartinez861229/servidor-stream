@@ -375,11 +375,12 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 	args = append(args, "-pix_fmt", "yuv420p")
 
 	// Codec de audio - AAC para SRT con configuración optimizada
+	// Usamos -af aresample para asegurar compatibilidad y sincronización
 	args = append(args,
 		"-c:a", "aac",
 		"-ar", "48000",
 		"-ac", "2",
-		"-strict", "experimental",
+		"-af", "aresample=async=1:min_hard_comp=0.100000:first_pts=0", // Resincronizar audio
 	)
 
 	// Bitrate de audio

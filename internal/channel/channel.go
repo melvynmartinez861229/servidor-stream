@@ -29,6 +29,8 @@ type Channel struct {
 	VideoPath     string    `json:"videoPath"`
 	SRTStreamName string    `json:"srtStreamName"` // Nombre identificador del stream SRT
 	SRTPort       int       `json:"srtPort"`       // Puerto SRT para este canal
+	Resolution    string    `json:"resolution"`    // Resolución de salida (ej: "1920x1080")
+	FrameRate     int       `json:"frameRate"`     // FPS de salida
 	Status        Status    `json:"status"`
 	CurrentFile   string    `json:"currentFile"`
 	CreatedAt     time.Time `json:"createdAt"`
@@ -123,6 +125,8 @@ func (m *Manager) Add(label, videoPath, srtStreamName string) (*Channel, error) 
 		VideoPath:     videoPath,
 		SRTStreamName: srtStreamName,
 		SRTPort:       srtPort,
+		Resolution:    "1920x1080", // Valor por defecto
+		FrameRate:     30,          // Valor por defecto
 		Status:        StatusInactive,
 		CurrentFile:   "", // Se llenará cuando Aximmetry solicite un video
 		CreatedAt:     time.Now(),
@@ -275,6 +279,26 @@ func (m *Manager) SetCurrentFile(channelID, filePath string) error {
 
 	channel.CurrentFile = filePath
 	channel.UpdatedAt = time.Now()
+
+	return nil
+}
+
+// SetVideoSettings establece la resolución y FPS de un canal
+func (m *Manager) SetVideoSettings(channelID, resolution string, frameRate int) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	channel, exists := m.channels[channelID]
+	if !exists {
+		return errors.New("canal no encontrado")
+	}
+
+	channel.Resolution = resolution
+	channel.FrameRate = frameRate
+	channel.UpdatedAt = time.Now()
+
+	// Persistir cambios
+	m.saveToDisk()
 
 	return nil
 }

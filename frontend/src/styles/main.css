@@ -358,12 +358,14 @@ html, body {
     align-items: center;
     gap: var(--spacing-xs);
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--text-primary);
 }
 
 .channel-stats-row .stat i {
-    color: var(--color-primary);
-    font-size: 11px;
+    color: var(--color-info);
+    font-size: 12px;
+    width: 14px;
+    text-align: center;
 }
 
 .channel-stats-row .stat-frames,
@@ -415,6 +417,38 @@ html, body {
     font-family: 'Consolas', monospace;
     font-size: 12px;
     color: var(--color-primary);
+}
+
+.channel-info-row .video-settings {
+    display: flex;
+    gap: var(--spacing-xs);
+}
+
+/* Selects inline para configuración de video */
+.inline-select {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: 2px 6px;
+    font-size: 11px;
+    font-family: 'Consolas', monospace;
+    cursor: pointer;
+    outline: none;
+    transition: border-color var(--transition-fast);
+}
+
+.inline-select:hover:not(:disabled) {
+    border-color: var(--color-primary);
+}
+
+.inline-select:focus {
+    border-color: var(--color-primary);
+}
+
+.inline-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .channel-card-footer {

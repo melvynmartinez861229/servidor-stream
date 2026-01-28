@@ -49,6 +49,8 @@ export namespace channel {
 	    videoPath: string;
 	    srtStreamName: string;
 	    srtPort: number;
+	    resolution: string;
+	    frameRate: number;
 	    status: string;
 	    currentFile: string;
 	    // Go type: time
@@ -69,6 +71,8 @@ export namespace channel {
 	        this.videoPath = source["videoPath"];
 	        this.srtStreamName = source["srtStreamName"];
 	        this.srtPort = source["srtPort"];
+	        this.resolution = source["resolution"];
+	        this.frameRate = source["frameRate"];
 	        this.status = source["status"];
 	        this.currentFile = source["currentFile"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);

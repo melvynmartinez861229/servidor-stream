@@ -58,6 +58,10 @@ export function SelectVideoPath() {
   return window['go']['app']['App']['SelectVideoPath']();
 }
 
+export function SetChannelVideoSettings(arg1, arg2, arg3) {
+  return window['go']['app']['App']['SetChannelVideoSettings'](arg1, arg2, arg3);
+}
+
 export function StartChannel(arg1) {
   return window['go']['app']['App']['StartChannel'](arg1);
 }
