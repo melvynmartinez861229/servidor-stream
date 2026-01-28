@@ -249,6 +249,31 @@ func (a *App) StartChannel(channelID string) error {
 	return nil
 }
 
+// StopAllStreams detiene todos los streams FFmpeg de forma forzada sin reinicio
+func (a *App) StopAllStreams() error {
+	a.AddLog("INFO", "Deteniendo todos los streams de forma forzada...", "")
+
+	// Obtener todos los canales
+	channels := a.channelManager.GetAll()
+
+	// Detener cada proceso FFmpeg
+	a.ffmpegManager.StopAll()
+
+	// Actualizar el estado de todos los canales a inactivo
+	for _, ch := range channels {
+		a.channelManager.SetStatus(ch.ID, channel.StatusInactive)
+		runtime.EventsEmit(a.ctx, "channel:status", map[string]interface{}{
+			"channelId": ch.ID,
+			"status":    channel.StatusInactive,
+			"event":     "force_stopped",
+		})
+	}
+
+	a.AddLog("INFO", fmt.Sprintf("Se detuvieron %d streams de forma forzada", len(channels)), "")
+
+	return nil
+}
+
 // PlayTestPattern reproduce el patrón de prueba en un canal
 func (a *App) PlayTestPattern(channelID string) error {
 	a.AddLog("INFO", fmt.Sprintf("PlayTestPattern llamado para canal: %s", channelID), channelID)

@@ -37,6 +37,8 @@ export function SetChannelSRTHost(arg1:string,arg2:string):Promise<void>;
 
 export function StartChannel(arg1:string):Promise<void>;
 
+export function StopAllStreams():Promise<void>;
+
 export function StopChannel(arg1:string):Promise<void>;
 
 export function ToggleChannel(arg1:string):Promise<void>;

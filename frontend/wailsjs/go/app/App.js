@@ -66,6 +66,10 @@ export function StartChannel(arg1) {
   return window['go']['app']['App']['StartChannel'](arg1);
 }
 
+export function StopAllStreams() {
+  return window['go']['app']['App']['StopAllStreams']();
+}
+
 export function StopChannel(arg1) {
   return window['go']['app']['App']['StopChannel'](arg1);
 }

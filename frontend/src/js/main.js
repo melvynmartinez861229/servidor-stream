@@ -182,6 +182,7 @@ function setupEventListeners() {
     document.getElementById('btnGetStarted')?.addEventListener('click', () => openChannelModal());
     document.getElementById('btnSettings')?.addEventListener('click', () => openSettingsModal());
     document.getElementById('btnToggleLogs')?.addEventListener('click', toggleLogsPanel);
+    document.getElementById('btnStopAll')?.addEventListener('click', stopAllStreams);
     
     // Modal de canal
     document.getElementById('btnCloseChannelModal')?.addEventListener('click', closeChannelModal);
@@ -500,6 +501,16 @@ async function stopChannel(channelId) {
     } catch (error) {
         console.error('Error deteniendo canal:', error);
         showToast('error', 'Error', error.message || 'No se pudo detener el canal');
+    }
+}
+
+async function stopAllStreams() {
+    try {
+        await window.go.app.App.StopAllStreams();
+        showToast('warning', 'Streams detenidos', 'Todos los streams han sido detenidos de forma forzada');
+    } catch (error) {
+        console.error('Error deteniendo todos los streams:', error);
+        showToast('error', 'Error', error.message || 'No se pudieron detener los streams');
     }
 }
 
