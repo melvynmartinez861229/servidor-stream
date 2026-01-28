@@ -141,6 +141,9 @@ func (m *Manager) Start(config StreamConfig) error {
 	// Construir argumentos de FFmpeg
 	args := m.buildFFmpegArgs(config)
 
+	// Log del comando completo para debug
+	log.Printf("[FFmpeg] Comando: %s %s", m.ffmpegPath, strings.Join(args, " "))
+
 	// Crear contexto con cancelación
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -379,18 +382,26 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 				preset = p
 			}
 		}
-		args = append(args,
-			"-preset", preset,
-			"-tune", "ll", // Low latency (ultra low latency)
-			"-rc", "cbr", // CBR para streaming estable
-			"-rc-lookahead", "0", // Sin lookahead para baja latencia
-		)
+
 		// Profile
 		profile := config.EncoderProfile
 		if profile == "" {
 			profile = "main"
 		}
-		args = append(args, "-profile:v", profile)
+
+		// GOP size para NVENC
+		gopSize := config.GopSize
+		if gopSize <= 0 {
+			gopSize = 60 // 2 segundos a 30fps
+		}
+
+		args = append(args,
+			"-preset", preset,
+			"-profile:v", profile,
+			"-rc", "cbr", // CBR para streaming estable
+			"-g", strconv.Itoa(gopSize), // GOP size
+			"-bf", "0", // Sin B-frames para baja latencia en NVENC
+		)
 
 	case "h264_qsv":
 		// Intel QuickSync
@@ -398,9 +409,15 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		if preset == "" {
 			preset = "veryfast"
 		}
+		gopSize := config.GopSize
+		if gopSize <= 0 {
+			gopSize = 60
+		}
 		args = append(args,
 			"-preset", preset,
 			"-look_ahead", "0", // Deshabilitar lookahead para baja latencia
+			"-g", strconv.Itoa(gopSize),
+			"-bf", "0",
 		)
 		if config.EncoderProfile != "" {
 			args = append(args, "-profile:v", config.EncoderProfile)
@@ -408,9 +425,15 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 
 	case "h264_amf":
 		// AMD AMF
+		gopSize := config.GopSize
+		if gopSize <= 0 {
+			gopSize = 60
+		}
 		args = append(args,
 			"-quality", "speed",
 			"-rc", "cbr",
+			"-g", strconv.Itoa(gopSize),
+			"-bf", "0",
 		)
 		if config.EncoderProfile != "" {
 			args = append(args, "-profile:v", config.EncoderProfile)
@@ -444,21 +467,21 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 			"-refs", "1", // Una sola referencia
 			"-nal-hrd", "cbr", // CBR estricto
 		)
-	}
 
-	// === GOP y B-Frames (común a todos los encoders) ===
-	gopSize := config.GopSize
-	if gopSize <= 0 {
-		gopSize = 50 // 2 segundos a 25fps por defecto
-	}
-	args = append(args,
-		"-g", strconv.Itoa(gopSize),
-		"-keyint_min", strconv.Itoa(gopSize),
-		"-sc_threshold", "0", // Deshabilitar detección de cambio de escena
-	)
+		// GOP y B-Frames para libx264
+		gopSize := config.GopSize
+		if gopSize <= 0 {
+			gopSize = 50 // 2 segundos a 25fps por defecto
+		}
+		args = append(args,
+			"-g", strconv.Itoa(gopSize),
+			"-keyint_min", strconv.Itoa(gopSize),
+			"-sc_threshold", "0", // Deshabilitar detección de cambio de escena
+		)
 
-	bframes := config.BFrames
-	args = append(args, "-bf", strconv.Itoa(bframes))
+		bframes := config.BFrames
+		args = append(args, "-bf", strconv.Itoa(bframes))
+	}
 
 	// === Control de Bitrate ===
 	videoBitrate := config.VideoBitrate
@@ -467,15 +490,18 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 	}
 	args = append(args, "-b:v", videoBitrate)
 
-	maxBitrate := config.MaxBitrate
-	if maxBitrate == "" {
-		maxBitrate = videoBitrate // CBR: maxrate = bitrate
+	// maxrate y bufsize solo para encoders que los soportan bien
+	if encoder != "h264_nvenc" {
+		maxBitrate := config.MaxBitrate
+		if maxBitrate == "" {
+			maxBitrate = videoBitrate // CBR: maxrate = bitrate
+		}
+		bufSize := config.BufferSize
+		if bufSize == "" {
+			bufSize = videoBitrate // CBR: bufsize = bitrate
+		}
+		args = append(args, "-maxrate", maxBitrate, "-bufsize", bufSize)
 	}
-	bufSize := config.BufferSize
-	if bufSize == "" {
-		bufSize = videoBitrate // CBR: bufsize = bitrate
-	}
-	args = append(args, "-maxrate", maxBitrate, "-bufsize", bufSize)
 
 	// === Resolución ===
 	if config.Width > 0 && config.Height > 0 {
