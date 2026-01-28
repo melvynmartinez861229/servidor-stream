@@ -330,7 +330,7 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 
 	// Input - sin -re para máxima fluidez (el encoding controla el ritmo)
 	args = append(args,
-		"-re", // Mantener para sincronización de tiempo real
+		"-re",                // Mantener para sincronización de tiempo real
 		"-fflags", "+genpts", // Generar timestamps correctos
 		"-i", config.InputPath,
 	)
