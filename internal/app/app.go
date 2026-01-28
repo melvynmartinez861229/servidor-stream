@@ -231,7 +231,7 @@ func (a *App) StartChannel(channelID string) error {
 		SRTOverheadBW:  a.config.SRTOverheadBW,
 	}
 
-	err = a.ffmpegManager.Start(ffmpegConfig)
+	err = a.ffmpegManager.StartWithFallback(ffmpegConfig)
 	if err != nil {
 		a.channelManager.SetStatus(channelID, channel.StatusError)
 		a.AddLog("ERROR", fmt.Sprintf("Error iniciando stream %s: %v", ch.Label, err), channelID)
@@ -353,7 +353,7 @@ func (a *App) PlayTestPattern(channelID string) error {
 
 	a.AddLog("INFO", fmt.Sprintf("Iniciando FFmpeg: %dx%d @ %dfps en %s:%d (encoder: %s)", width, height, frameRate, ch.SRTHost, ch.SRTPort, a.config.VideoEncoder), channelID)
 
-	err = a.ffmpegManager.Start(ffmpegConfig)
+	err = a.ffmpegManager.StartWithFallback(ffmpegConfig)
 	if err != nil {
 		a.channelManager.SetStatus(channelID, channel.StatusError)
 		a.AddLog("ERROR", fmt.Sprintf("Error iniciando patrón de prueba: %v", err), channelID)
@@ -573,7 +573,7 @@ func (a *App) PlayVideoOnChannel(channelID, videoPath string) error {
 
 	a.AddLog("INFO", fmt.Sprintf("Iniciando FFmpeg: %dx%d @ %dfps en %s:%d", width, height, frameRate, ch.SRTHost, ch.SRTPort), channelID)
 
-	err = a.ffmpegManager.Start(ffmpegConfig)
+	err = a.ffmpegManager.StartWithFallback(ffmpegConfig)
 	if err != nil {
 		a.channelManager.SetStatus(channelID, channel.StatusError)
 		a.AddLog("ERROR", fmt.Sprintf("Error reproduciendo video: %v", err), channelID)
@@ -849,6 +849,15 @@ func (a *App) onFFmpegEvent(event ffmpeg.Event) {
 		a.AddLog("INFO", fmt.Sprintf("FFmpeg iniciado para canal %s", event.ChannelID), event.ChannelID)
 		// No cambiar status aquí - ya se hizo en PlayTestPattern/StartChannel
 		return // No emitir evento duplicado
+	case ffmpeg.EventWarning:
+		// Encoder de hardware no disponible, usando fallback
+		a.AddLog("WARNING", event.Message, event.ChannelID)
+		runtime.EventsEmit(a.ctx, "ffmpeg:warning", map[string]interface{}{
+			"channelId": event.ChannelID,
+			"message":   event.Message,
+			"data":      event.Data,
+		})
+		return // No cambiar status, el stream continuará con el fallback
 	case ffmpeg.EventStopped:
 		a.AddLog("INFO", fmt.Sprintf("FFmpeg detenido para canal %s", event.ChannelID), event.ChannelID)
 		a.channelManager.SetStatus(event.ChannelID, channel.StatusInactive)

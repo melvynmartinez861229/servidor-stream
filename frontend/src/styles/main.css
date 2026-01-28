@@ -597,6 +597,10 @@ html, body {
     background-color: var(--color-danger-light);
 }
 
+.log-entry.WARNING {
+    background-color: rgba(245, 158, 11, 0.15);
+}
+
 .log-entry.DEBUG {
     background-color: var(--bg-tertiary);
     color: var(--text-muted);
@@ -615,6 +619,7 @@ html, body {
 
 .log-entry.INFO .level { color: var(--color-primary); }
 .log-entry.ERROR .level { color: var(--color-danger); }
+.log-entry.WARNING .level { color: var(--color-warning); }
 .log-entry.DEBUG .level { color: var(--text-muted); }
 
 .log-entry .message {

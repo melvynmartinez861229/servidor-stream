@@ -23,6 +23,7 @@ const (
 	EventStopped  EventType = "stopped"
 	EventError    EventType = "error"
 	EventProgress EventType = "progress"
+	EventWarning  EventType = "warning"
 )
 
 // Event representa un evento del proceso FFmpeg
@@ -123,6 +124,16 @@ func NewManager(ffmpegPath string, eventHandler func(Event)) *Manager {
 
 // Start inicia un proceso FFmpeg para streaming SRT
 func (m *Manager) Start(config StreamConfig) error {
+	return m.startInternal(config, false)
+}
+
+// StartWithFallback inicia un proceso FFmpeg con fallback automático a libx264 si el encoder de hardware falla
+func (m *Manager) StartWithFallback(config StreamConfig) error {
+	return m.startInternal(config, true)
+}
+
+// startInternal implementación interna de Start con opción de fallback
+func (m *Manager) startInternal(config StreamConfig, enableFallback bool) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -136,6 +147,29 @@ func (m *Manager) Start(config StreamConfig) error {
 	// Verificar que el archivo de entrada existe
 	if _, err := os.Stat(config.InputPath); os.IsNotExist(err) {
 		return fmt.Errorf("archivo de entrada no encontrado: %s", config.InputPath)
+	}
+
+	// Si se usa encoder de hardware y hay fallback habilitado, verificar primero
+	originalEncoder := config.VideoEncoder
+	isHardwareEncoder := originalEncoder == "h264_nvenc" || originalEncoder == "h264_qsv" || originalEncoder == "h264_amf"
+
+	if isHardwareEncoder && enableFallback {
+		// Probar si el encoder de hardware funciona
+		if !m.testHardwareEncoder(config.InputPath, originalEncoder) {
+			// Fallback a libx264
+			config.VideoEncoder = "libx264"
+			m.emitEvent(Event{
+				Type:      EventWarning,
+				ChannelID: config.ChannelID,
+				Message:   fmt.Sprintf("Encoder %s no disponible (driver incompatible). Usando libx264 como fallback.", originalEncoder),
+				Data: map[string]interface{}{
+					"originalEncoder": originalEncoder,
+					"fallbackEncoder": "libx264",
+					"reason":          "hardware_encoder_unavailable",
+				},
+			})
+			log.Printf("[FFmpeg] WARNING: %s no disponible, usando libx264 como fallback para canal %s", originalEncoder, config.ChannelID)
+		}
 	}
 
 	// Construir argumentos de FFmpeg
@@ -187,20 +221,59 @@ func (m *Manager) Start(config StreamConfig) error {
 	if srtPort == 0 {
 		srtPort = 9000
 	}
+
+	encoderUsed := config.VideoEncoder
+	if encoderUsed == "" {
+		encoderUsed = "libx264"
+	}
+
 	m.emitEvent(Event{
 		Type:      EventStarted,
 		ChannelID: config.ChannelID,
-		Message:   fmt.Sprintf("Stream SRT iniciado en puerto %d", srtPort),
+		Message:   fmt.Sprintf("Stream SRT iniciado en puerto %d (encoder: %s)", srtPort, encoderUsed),
 		Data: map[string]interface{}{
 			"pid":        cmd.Process.Pid,
 			"streamName": config.SRTStreamName,
 			"inputPath":  config.InputPath,
 			"srtPort":    srtPort,
 			"srtUrl":     fmt.Sprintf("srt://IP_SERVIDOR:%d", srtPort),
+			"encoder":    encoderUsed,
 		},
 	})
 
 	return nil
+}
+
+// testHardwareEncoder prueba si un encoder de hardware está disponible y funcional
+func (m *Manager) testHardwareEncoder(inputPath string, encoder string) bool {
+	// Crear un comando de prueba rápido (solo 1 frame)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	args := []string{
+		"-hide_banner",
+		"-loglevel", "error",
+		"-i", inputPath,
+		"-c:v", encoder,
+		"-frames:v", "1",
+		"-f", "null",
+		"-",
+	}
+
+	cmd := exec.CommandContext(ctx, m.ffmpegPath, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000,
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[FFmpeg] Test encoder %s falló: %v - %s", encoder, err, string(output))
+		return false
+	}
+
+	log.Printf("[FFmpeg] Test encoder %s exitoso", encoder)
+	return true
 }
 
 // Stop detiene un proceso FFmpeg
@@ -366,28 +439,7 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 	switch encoder {
 	case "h264_nvenc":
 		// NVIDIA NVENC - Aceleración por hardware (RTX 3060 Ti y similares)
-		// La RTX 3060 Ti puede manejar múltiples sesiones NVENC simultáneas (hasta ~5-8)
-		preset := config.EncoderPreset
-		if preset == "" {
-			preset = "p4" // Balance velocidad/calidad para NVENC
-		} else {
-			// Mapear presets de libx264 a NVENC
-			nvencPresets := map[string]string{
-				"ultrafast": "p1",
-				"veryfast":  "p2",
-				"fast":      "p4",
-				"medium":    "p5",
-			}
-			if p, ok := nvencPresets[preset]; ok {
-				preset = p
-			}
-		}
-
-		// Profile
-		profile := config.EncoderProfile
-		if profile == "" {
-			profile = "main"
-		}
+		// Configuración básica y universal compatible con todas las versiones de FFmpeg
 
 		// GOP size para NVENC
 		gopSize := config.GopSize
@@ -395,12 +447,10 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 			gopSize = 60 // 2 segundos a 30fps
 		}
 
+		// Configuración mínima y robusta para NVENC
 		args = append(args,
-			"-preset", preset,
-			"-profile:v", profile,
-			"-rc", "cbr", // CBR para streaming estable
 			"-g", strconv.Itoa(gopSize), // GOP size
-			"-bf", "0", // Sin B-frames para baja latencia en NVENC
+			"-bf", "0", // Sin B-frames para baja latencia
 		)
 
 	case "h264_qsv":

@@ -172,6 +172,12 @@ function setupWailsEvents() {
         state.connectedClients = state.connectedClients.filter(c => c.id !== clientId);
         updateClientCount();
     });
+    
+    // Warning de FFmpeg (fallback de encoder)
+    window.runtime.EventsOn('ffmpeg:warning', (data) => {
+        console.log('[EVENT] ffmpeg:warning', data);
+        showToast('warning', 'Encoder Fallback', data.message);
+    });
 }
 
 // ==================== Event Listeners de UI ====================
