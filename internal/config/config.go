@@ -158,18 +158,20 @@ func Default() *Config {
 	}
 }
 
-// GetConfigPath retorna la ruta del archivo de configuración
+// GetConfigPath retorna la ruta del archivo de configuración (junto al ejecutable)
 func GetConfigPath() string {
-	configDir, _ := os.UserConfigDir()
-	return filepath.Join(configDir, "servidor-stream", "config.json")
+	exePath, err := os.Executable()
+	if err != nil {
+		// Fallback al directorio actual
+		return "config.json"
+	}
+	exeDir := filepath.Dir(exePath)
+	return filepath.Join(exeDir, "config.json")
 }
 
 // Load carga la configuración desde archivo
 func Load() (*Config, error) {
 	configPath := GetConfigPath()
-
-	// Crear directorio si no existe
-	os.MkdirAll(filepath.Dir(configPath), 0755)
 
 	// Leer archivo
 	data, err := os.ReadFile(configPath)
@@ -209,10 +211,23 @@ func Save(cfg *Config) error {
 	return os.WriteFile(configPath, data, 0644)
 }
 
+// GetChannelsPath retorna la ruta del archivo de canales (junto al ejecutable)
+func GetChannelsPath() string {
+	exePath, err := os.Executable()
+	if err != nil {
+		// Fallback al directorio actual
+		return "channels.json"
+	}
+	exeDir := filepath.Dir(exePath)
+	return filepath.Join(exeDir, "channels.json")
+}
+
 // SaveChannels guarda la configuración de canales
 func SaveChannels(channels interface{}) error {
-	configDir, _ := os.UserConfigDir()
-	channelsPath := filepath.Join(configDir, "servidor-stream", "channels.json")
+	channelsPath := GetChannelsPath()
+
+	// Crear directorio si no existe
+	os.MkdirAll(filepath.Dir(channelsPath), 0755)
 
 	data, err := json.MarshalIndent(channels, "", "  ")
 	if err != nil {
@@ -224,8 +239,7 @@ func SaveChannels(channels interface{}) error {
 
 // LoadChannels carga la configuración de canales
 func LoadChannels() ([]byte, error) {
-	configDir, _ := os.UserConfigDir()
-	channelsPath := filepath.Join(configDir, "servidor-stream", "channels.json")
+	channelsPath := GetChannelsPath()
 
 	return os.ReadFile(channelsPath)
 }
