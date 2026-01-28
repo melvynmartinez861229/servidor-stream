@@ -1,5 +1,5 @@
 /* ===================================
-   NDI Server Stream - Estilos Principales
+   SRT Server Stream - Estilos Principales
    =================================== */
 
 /* Variables CSS */
@@ -404,38 +404,6 @@ html, body {
     font-family: 'Consolas', monospace;
     font-size: 12px;
     color: var(--color-primary);
-}
-
-.channel-info-row .video-settings {
-    display: flex;
-    gap: var(--spacing-xs);
-}
-
-/* Selects inline para configuración de video */
-.inline-select {
-    background-color: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: 2px 6px;
-    font-size: 11px;
-    font-family: 'Consolas', monospace;
-    cursor: pointer;
-    outline: none;
-    transition: border-color var(--transition-fast);
-}
-
-.inline-select:hover:not(:disabled) {
-    border-color: var(--color-primary);
-}
-
-.inline-select:focus {
-    border-color: var(--color-primary);
-}
-
-.inline-select:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 /* Input inline para SRT host */
@@ -938,11 +906,45 @@ html, body {
     border-radius: var(--border-radius);
     color: var(--text-secondary);
     font-size: 13px;
+    margin-bottom: var(--spacing-md);
 }
 
 .info-box i {
     color: var(--color-primary);
     flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.info-box p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.info-box-blue {
+    background-color: rgba(74, 158, 255, 0.15);
+    border: 1px solid rgba(74, 158, 255, 0.3);
+}
+
+.info-box-blue i {
+    color: #4a9eff;
+}
+
+.info-box-warning {
+    background-color: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.info-box-warning i {
+    color: #f59e0b;
+}
+
+.info-box-green {
+    background-color: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.info-box-green i {
+    color: #22c55e;
 }
 
 /* Toast Notifications */

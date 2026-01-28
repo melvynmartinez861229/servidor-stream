@@ -62,10 +62,6 @@ export function SetChannelSRTHost(arg1, arg2) {
   return window['go']['app']['App']['SetChannelSRTHost'](arg1, arg2);
 }
 
-export function SetChannelVideoSettings(arg1, arg2, arg3) {
-  return window['go']['app']['App']['SetChannelVideoSettings'](arg1, arg2, arg3);
-}
-
 export function StartChannel(arg1) {
   return window['go']['app']['App']['StartChannel'](arg1);
 }

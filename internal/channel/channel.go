@@ -299,26 +299,6 @@ func (m *Manager) SetCurrentFile(channelID, filePath string) error {
 	return nil
 }
 
-// SetVideoSettings establece la resolución y FPS de un canal
-func (m *Manager) SetVideoSettings(channelID, resolution string, frameRate int) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	channel, exists := m.channels[channelID]
-	if !exists {
-		return errors.New("canal no encontrado")
-	}
-
-	channel.Resolution = resolution
-	channel.FrameRate = frameRate
-	channel.UpdatedAt = time.Now()
-
-	// Persistir cambios
-	m.saveToDisk()
-
-	return nil
-}
-
 // SetSRTHost establece la IP/Host SRT de un canal
 func (m *Manager) SetSRTHost(channelID, host string) error {
 	m.mutex.Lock()

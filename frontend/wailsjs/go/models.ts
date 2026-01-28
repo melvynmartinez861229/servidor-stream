@@ -121,6 +121,21 @@ export namespace config {
 	    theme: string;
 	    language: string;
 	    maxLogLines: number;
+	    videoEncoder: string;
+	    encoderPreset: string;
+	    encoderProfile: string;
+	    encoderTune: string;
+	    gopSize: number;
+	    bFrames: number;
+	    bitrateMode: string;
+	    maxBitrate: string;
+	    bufferSize: string;
+	    crf: number;
+	    srtLatency: number;
+	    srtRecvBuffer: number;
+	    srtSendBuffer: number;
+	    srtOverheadBW: number;
+	    srtPeerIdleTime: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -142,6 +157,21 @@ export namespace config {
 	        this.theme = source["theme"];
 	        this.language = source["language"];
 	        this.maxLogLines = source["maxLogLines"];
+	        this.videoEncoder = source["videoEncoder"];
+	        this.encoderPreset = source["encoderPreset"];
+	        this.encoderProfile = source["encoderProfile"];
+	        this.encoderTune = source["encoderTune"];
+	        this.gopSize = source["gopSize"];
+	        this.bFrames = source["bFrames"];
+	        this.bitrateMode = source["bitrateMode"];
+	        this.maxBitrate = source["maxBitrate"];
+	        this.bufferSize = source["bufferSize"];
+	        this.crf = source["crf"];
+	        this.srtLatency = source["srtLatency"];
+	        this.srtRecvBuffer = source["srtRecvBuffer"];
+	        this.srtSendBuffer = source["srtSendBuffer"];
+	        this.srtOverheadBW = source["srtOverheadBW"];
+	        this.srtPeerIdleTime = source["srtPeerIdleTime"];
 	    }
 	}
 

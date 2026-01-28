@@ -33,6 +33,29 @@ type Config struct {
 	Theme       string `json:"theme"`
 	Language    string `json:"language"`
 	MaxLogLines int    `json:"maxLogLines"`
+
+	// === Configuración Avanzada de Streaming ===
+
+	// Encoding
+	VideoEncoder   string `json:"videoEncoder"`   // libx264, h264_nvenc, h264_qsv
+	EncoderPreset  string `json:"encoderPreset"`  // ultrafast, veryfast, fast, medium
+	EncoderProfile string `json:"encoderProfile"` // baseline, main, high
+	EncoderTune    string `json:"encoderTune"`    // zerolatency, film, animation
+	GopSize        int    `json:"gopSize"`        // Keyframe interval (frames)
+	BFrames        int    `json:"bFrames"`        // B-frames (0 para baja latencia)
+
+	// Bitrate Control
+	BitrateMode string `json:"bitrateMode"` // cbr, vbr
+	MaxBitrate  string `json:"maxBitrate"`  // Máximo bitrate (para VBR)
+	BufferSize  string `json:"bufferSize"`  // Tamaño del buffer de rate control
+	CRF         int    `json:"crf"`         // Calidad constante (0-51, solo VBR)
+
+	// SRT Avanzado
+	SRTLatency      int `json:"srtLatency"`      // Latencia SRT en ms
+	SRTRecvBuffer   int `json:"srtRecvBuffer"`   // Buffer de recepción en bytes
+	SRTSendBuffer   int `json:"srtSendBuffer"`   // Buffer de envío en bytes
+	SRTOverheadBW   int `json:"srtOverheadBW"`   // Overhead bandwidth %
+	SRTPeerIdleTime int `json:"srtPeerIdleTime"` // Timeout de peer idle en ms
 }
 
 // GetExecutablePath retorna la ruta del ejecutable
@@ -103,9 +126,9 @@ func Default() *Config {
 		WebSocketPort:       8765,
 		FFmpegPath:          ffmpegPath,
 		AutoRestart:         true,
-		DefaultVideoBitrate: "10M",
+		DefaultVideoBitrate: "5M",
 		DefaultAudioBitrate: "192k",
-		DefaultFrameRate:    30,
+		DefaultFrameRate:    25,
 		TestPatternPath:     testPatternPath,
 		SRTPrefix:           "SRT_SERVER_",
 		SRTGroup:            "",
@@ -114,6 +137,24 @@ func Default() *Config {
 		Theme:               "dark",
 		Language:            "es",
 		MaxLogLines:         1000,
+		// Encoding defaults optimizados para estabilidad
+		VideoEncoder:   "libx264",
+		EncoderPreset:  "veryfast",
+		EncoderProfile: "main",
+		EncoderTune:    "zerolatency",
+		GopSize:        50, // 2 segundos a 25fps
+		BFrames:        0,  // Sin B-frames para baja latencia
+		// Bitrate Control
+		BitrateMode: "cbr",
+		MaxBitrate:  "5M",
+		BufferSize:  "5M",
+		CRF:         23,
+		// SRT optimizado para estabilidad
+		SRTLatency:      500,     // 500ms de latencia
+		SRTRecvBuffer:   8388608, // 8MB
+		SRTSendBuffer:   8388608, // 8MB
+		SRTOverheadBW:   25,      // 25% overhead
+		SRTPeerIdleTime: 5000,    // 5 segundos
 	}
 }
 

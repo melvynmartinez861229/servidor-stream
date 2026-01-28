@@ -1,6 +1,6 @@
 @echo off
 echo ============================================
-echo   NDI Server Stream - Script de Compilacion
+echo   SRT Server Stream - Script de Compilacion
 echo ============================================
 echo.
 
@@ -74,6 +74,6 @@ echo ============================================
 echo   Compilacion completada exitosamente!
 echo ============================================
 echo.
-echo El ejecutable se encuentra en: build\bin\ndi-server-stream.exe
+echo El ejecutable se encuentra en: build\bin\servidor-stream.exe
 echo.
 pause

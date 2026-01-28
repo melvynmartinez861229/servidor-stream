@@ -45,8 +45,23 @@ type StreamConfig struct {
 	FrameRate     int
 	Width         int
 	Height        int
-	PixelFormat   string
 	Loop          bool
+	// Configuración avanzada de encoding
+	VideoEncoder   string // libx264, h264_nvenc, h264_qsv, h264_amf
+	EncoderPreset  string // ultrafast, veryfast, fast, medium
+	EncoderProfile string // baseline, main, high
+	EncoderTune    string // zerolatency, film, animation
+	GopSize        int    // Keyframe interval
+	BFrames        int    // B-frames
+	// Control de bitrate
+	BitrateMode string // cbr, vbr
+	MaxBitrate  string
+	BufferSize  string
+	// SRT avanzado
+	SRTLatency    int // ms
+	SRTRecvBuffer int // bytes
+	SRTSendBuffer int // bytes
+	SRTOverheadBW int // porcentaje
 }
 
 // ProcessInfo información de un proceso FFmpeg
@@ -328,121 +343,210 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		args = append(args, "-stream_loop", "-1")
 	}
 
-	// Input - sin -re para máxima fluidez (el encoding controla el ritmo)
+	// Input
 	args = append(args,
-		"-re",                // Mantener para sincronización de tiempo real
+		"-re",                // Sincronización de tiempo real
 		"-fflags", "+genpts", // Generar timestamps correctos
 		"-i", config.InputPath,
 	)
 
-	// Codec de video - H.264 optimizado para baja latencia
+	// === Encoder de Video ===
+	encoder := config.VideoEncoder
+	if encoder == "" {
+		encoder = "libx264"
+	}
+
+	args = append(args, "-c:v", encoder)
+
+	// Configuración específica por encoder
+	switch encoder {
+	case "h264_nvenc":
+		// NVIDIA NVENC - Aceleración por hardware
+		preset := config.EncoderPreset
+		if preset == "" {
+			preset = "p4" // Balance velocidad/calidad para NVENC
+		} else {
+			// Mapear presets de libx264 a NVENC
+			nvencPresets := map[string]string{
+				"ultrafast": "p1",
+				"veryfast":  "p2",
+				"fast":      "p4",
+				"medium":    "p5",
+			}
+			if p, ok := nvencPresets[preset]; ok {
+				preset = p
+			}
+		}
+		args = append(args,
+			"-preset", preset,
+			"-tune", "ll", // Low latency
+			"-rc", "cbr", // CBR para streaming
+			"-zerolatency", "1",
+		)
+		if config.EncoderProfile != "" && config.EncoderProfile != "baseline" {
+			args = append(args, "-profile:v", config.EncoderProfile)
+		}
+
+	case "h264_qsv":
+		// Intel QuickSync
+		preset := config.EncoderPreset
+		if preset == "" {
+			preset = "veryfast"
+		}
+		args = append(args,
+			"-preset", preset,
+			"-look_ahead", "0", // Deshabilitar lookahead para baja latencia
+		)
+		if config.EncoderProfile != "" {
+			args = append(args, "-profile:v", config.EncoderProfile)
+		}
+
+	case "h264_amf":
+		// AMD AMF
+		args = append(args,
+			"-quality", "speed",
+			"-rc", "cbr",
+		)
+		if config.EncoderProfile != "" {
+			args = append(args, "-profile:v", config.EncoderProfile)
+		}
+
+	default:
+		// libx264 (CPU)
+		preset := config.EncoderPreset
+		if preset == "" {
+			preset = "veryfast"
+		}
+		profile := config.EncoderProfile
+		if profile == "" {
+			profile = "main"
+		}
+		args = append(args,
+			"-profile:v", profile,
+			"-level", "4.0",
+			"-preset", preset,
+		)
+		// Tune solo para libx264
+		tune := config.EncoderTune
+		if tune == "" {
+			tune = "zerolatency"
+		}
+		if tune != "" {
+			args = append(args, "-tune", tune)
+		}
+		// Opciones específicas de libx264 para baja latencia
+		args = append(args,
+			"-refs", "1", // Una sola referencia
+			"-nal-hrd", "cbr", // CBR estricto
+		)
+	}
+
+	// === GOP y B-Frames (común a todos los encoders) ===
+	gopSize := config.GopSize
+	if gopSize <= 0 {
+		gopSize = 50 // 2 segundos a 25fps por defecto
+	}
 	args = append(args,
-		"-c:v", "libx264",
-		"-profile:v", "high",
-		"-level", "4.1",
-		"-preset", "ultrafast", // Más rápido para menor latencia
-		"-tune", "zerolatency", // Baja latencia para streaming
-		"-g", "30", // Keyframe cada 30 frames (1 segundo a 30fps)
-		"-keyint_min", "30",
+		"-g", strconv.Itoa(gopSize),
+		"-keyint_min", strconv.Itoa(gopSize),
 		"-sc_threshold", "0", // Deshabilitar detección de cambio de escena
-		"-bf", "0", // Sin B-frames para menor latencia
 	)
 
-	// Bitrate de video
-	if config.VideoBitrate != "" {
-		args = append(args, "-b:v", config.VideoBitrate)
-	} else {
-		args = append(args, "-b:v", "5M")
-	}
-	// Añadir maxrate y bufsize para mejor control de bitrate
-	args = append(args, "-maxrate", "6M", "-bufsize", "3M")
+	bframes := config.BFrames
+	args = append(args, "-bf", strconv.Itoa(bframes))
 
-	// Resolución (si se especifica)
+	// === Control de Bitrate ===
+	videoBitrate := config.VideoBitrate
+	if videoBitrate == "" {
+		videoBitrate = "5M"
+	}
+	args = append(args, "-b:v", videoBitrate)
+
+	maxBitrate := config.MaxBitrate
+	if maxBitrate == "" {
+		maxBitrate = videoBitrate // CBR: maxrate = bitrate
+	}
+	bufSize := config.BufferSize
+	if bufSize == "" {
+		bufSize = videoBitrate // CBR: bufsize = bitrate
+	}
+	args = append(args, "-maxrate", maxBitrate, "-bufsize", bufSize)
+
+	// === Resolución ===
 	if config.Width > 0 && config.Height > 0 {
-		args = append(args,
-			"-s", fmt.Sprintf("%dx%d", config.Width, config.Height),
-		)
+		args = append(args, "-s", fmt.Sprintf("%dx%d", config.Width, config.Height))
 	}
 
-	// Frame rate
+	// === Frame Rate ===
 	if config.FrameRate > 0 {
-		args = append(args,
-			"-r", strconv.Itoa(config.FrameRate),
-		)
+		args = append(args, "-r", strconv.Itoa(config.FrameRate))
 	}
 
 	// Formato de pixel
 	args = append(args, "-pix_fmt", "yuv420p")
 
-	// Codec de audio - AAC para SRT con configuración optimizada
-	// Usamos -af aresample para asegurar compatibilidad y sincronización
+	// === Audio ===
 	args = append(args,
 		"-c:a", "aac",
 		"-ar", "48000",
 		"-ac", "2",
-		"-af", "aresample=async=1:min_hard_comp=0.100000:first_pts=0", // Resincronizar audio
+		"-af", "aresample=async=1:min_hard_comp=0.100000:first_pts=0",
 	)
 
-	// Bitrate de audio
-	if config.AudioBitrate != "" {
-		args = append(args, "-b:a", config.AudioBitrate)
-	} else {
-		args = append(args, "-b:a", "192k")
+	audioBitrate := config.AudioBitrate
+	if audioBitrate == "" {
+		audioBitrate = "192k"
 	}
+	args = append(args, "-b:a", audioBitrate)
 
-	// Output SRT (modo listener - el servidor espera conexiones de Aximmetry como caller)
+	// === Output SRT ===
 	srtPort := config.SRTPort
 	if srtPort == 0 {
-		srtPort = 9000 // Puerto por defecto
+		srtPort = 9000
 	}
 
 	srtHost := config.SRTHost
 	if srtHost == "" {
-		srtHost = "0.0.0.0" // Por defecto escucha en todas las interfaces
+		srtHost = "0.0.0.0"
 	}
 
-	// Formato MPEG-TS para SRT con parámetros optimizados para BAJA LATENCIA
-	// latency=120000 = 120ms (suficiente para local, mucho más fluido)
-	// rcvbuf/sndbuf optimizados para menor delay
+	// Parámetros SRT
+	srtLatency := config.SRTLatency
+	if srtLatency <= 0 {
+		srtLatency = 500 // 500ms por defecto
+	}
+	srtLatencyUs := srtLatency * 1000 // Convertir a microsegundos
+
+	srtRecvBuf := config.SRTRecvBuffer
+	if srtRecvBuf <= 0 {
+		srtRecvBuf = 8388608 // 8MB por defecto
+	}
+
+	srtSendBuf := config.SRTSendBuffer
+	if srtSendBuf <= 0 {
+		srtSendBuf = 8388608 // 8MB por defecto
+	}
+
+	srtOverhead := config.SRTOverheadBW
+	if srtOverhead <= 0 {
+		srtOverhead = 25 // 25% por defecto
+	}
+
+	// Calcular muxrate basado en bitrate
+	muxrate := "8M"
+
+	// Construir URL SRT con parámetros configurables
+	srtURL := fmt.Sprintf(
+		"srt://%s:%d?mode=listener&latency=%d&pkt_size=1316&rcvbuf=%d&sndbuf=%d&maxbw=-1&oheadbw=%d&listen_timeout=-1",
+		srtHost, srtPort, srtLatencyUs, srtRecvBuf, srtSendBuf, srtOverhead,
+	)
+
 	args = append(args,
 		"-f", "mpegts",
-		"-muxrate", "6M", // Tasa de mux fija para estabilidad
-		fmt.Sprintf("srt://%s:%d?mode=listener&latency=120000&pkt_size=1316&rcvbuf=1000000&sndbuf=1000000&listen_timeout=-1", srtHost, srtPort),
-	)
-
-	return args
-}
-
-// buildFFmpegArgsAlt construye argumentos alternativos para raw video
-// Se mantiene para compatibilidad con otros formatos de salida
-func (m *Manager) buildFFmpegArgsAlt(config StreamConfig) []string {
-	args := []string{
-		"-hide_banner",
-		"-loglevel", "info",
-		"-stats",
-	}
-
-	if config.Loop {
-		args = append(args, "-stream_loop", "-1")
-	}
-
-	args = append(args,
-		"-re",
-		"-i", config.InputPath,
-		"-c:v", "rawvideo",
-		"-pix_fmt", "uyvy422",
-	)
-
-	if config.FrameRate > 0 {
-		args = append(args, "-r", strconv.Itoa(config.FrameRate))
-	}
-
-	args = append(args,
-		"-c:a", "pcm_s16le",
-		"-ar", "48000",
-		"-ac", "2",
-		"-f", "nut",
-		"pipe:1", // Output a stdout
+		"-mpegts_copyts", "1",
+		"-muxrate", muxrate,
+		"-pcr_period", "20",
+		srtURL,
 	)
 
 	return args

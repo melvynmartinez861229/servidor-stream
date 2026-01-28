@@ -1,6 +1,6 @@
 @echo off
 echo ============================================
-echo   NDI Server Stream - Modo Desarrollo
+echo   SRT Server Stream - Modo Desarrollo
 echo ============================================
 echo.
 

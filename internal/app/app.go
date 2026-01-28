@@ -190,6 +190,18 @@ func (a *App) StartChannel(channelID string) error {
 		inputPath = ch.CurrentFile
 	}
 
+	// Parsear resolución del canal
+	width, height := 1920, 1080
+	if ch.Resolution != "" {
+		fmt.Sscanf(ch.Resolution, "%dx%d", &width, &height)
+	}
+
+	// Usar FPS del canal o el por defecto
+	frameRate := ch.FrameRate
+	if frameRate == 0 {
+		frameRate = a.config.DefaultFrameRate
+	}
+
 	// Configurar y iniciar FFmpeg con SRT
 	ffmpegConfig := ffmpeg.StreamConfig{
 		ChannelID:     ch.ID,
@@ -199,8 +211,24 @@ func (a *App) StartChannel(channelID string) error {
 		SRTHost:       ch.SRTHost,
 		VideoBitrate:  a.config.DefaultVideoBitrate,
 		AudioBitrate:  a.config.DefaultAudioBitrate,
-		FrameRate:     a.config.DefaultFrameRate,
+		FrameRate:     frameRate,
+		Width:         width,
+		Height:        height,
 		Loop:          true, // Loop por defecto
+		// Configuración avanzada
+		VideoEncoder:   a.config.VideoEncoder,
+		EncoderPreset:  a.config.EncoderPreset,
+		EncoderProfile: a.config.EncoderProfile,
+		EncoderTune:    a.config.EncoderTune,
+		GopSize:        a.config.GopSize,
+		BFrames:        a.config.BFrames,
+		BitrateMode:    a.config.BitrateMode,
+		MaxBitrate:     a.config.MaxBitrate,
+		BufferSize:     a.config.BufferSize,
+		SRTLatency:     a.config.SRTLatency,
+		SRTRecvBuffer:  a.config.SRTRecvBuffer,
+		SRTSendBuffer:  a.config.SRTSendBuffer,
+		SRTOverheadBW:  a.config.SRTOverheadBW,
 	}
 
 	err = a.ffmpegManager.Start(ffmpegConfig)
@@ -280,9 +308,25 @@ func (a *App) PlayTestPattern(channelID string) error {
 		Width:         width,
 		Height:        height,
 		Loop:          true, // El patrón siempre en loop
+		// Configuración avanzada de encoding
+		VideoEncoder:   a.config.VideoEncoder,
+		EncoderPreset:  a.config.EncoderPreset,
+		EncoderProfile: a.config.EncoderProfile,
+		EncoderTune:    a.config.EncoderTune,
+		GopSize:        a.config.GopSize,
+		BFrames:        a.config.BFrames,
+		// Control de bitrate
+		BitrateMode: a.config.BitrateMode,
+		MaxBitrate:  a.config.MaxBitrate,
+		BufferSize:  a.config.BufferSize,
+		// SRT avanzado
+		SRTLatency:    a.config.SRTLatency,
+		SRTRecvBuffer: a.config.SRTRecvBuffer,
+		SRTSendBuffer: a.config.SRTSendBuffer,
+		SRTOverheadBW: a.config.SRTOverheadBW,
 	}
 
-	a.AddLog("INFO", fmt.Sprintf("Iniciando FFmpeg: %dx%d @ %dfps en %s:%d", width, height, frameRate, ch.SRTHost, ch.SRTPort), channelID)
+	a.AddLog("INFO", fmt.Sprintf("Iniciando FFmpeg: %dx%d @ %dfps en %s:%d (encoder: %s)", width, height, frameRate, ch.SRTHost, ch.SRTPort, a.config.VideoEncoder), channelID)
 
 	err = a.ffmpegManager.Start(ffmpegConfig)
 	if err != nil {
@@ -319,18 +363,6 @@ func (a *App) SelectTestPatternPath() (string, error) {
 		return "", err
 	}
 	return path, nil
-}
-
-// SetChannelVideoSettings establece la resolución y FPS de un canal
-func (a *App) SetChannelVideoSettings(channelID, resolution string, frameRate int) error {
-	err := a.channelManager.SetVideoSettings(channelID, resolution, frameRate)
-	if err != nil {
-		return err
-	}
-
-	a.AddLog("INFO", fmt.Sprintf("Configuración de video actualizada: %s @ %dfps", resolution, frameRate), channelID)
-	runtime.EventsEmit(a.ctx, "channel:updated", nil)
-	return nil
 }
 
 // SetChannelSRTHost establece la IP/Host SRT de un canal

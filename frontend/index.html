@@ -177,7 +177,9 @@
                 <div class="modal-body">
                     <div class="settings-tabs">
                         <button class="tab-btn active" data-tab="general">General</button>
-                        <button class="tab-btn" data-tab="ffmpeg">FFmpeg</button>
+                        <button class="tab-btn" data-tab="encoding">Encoding</button>
+                        <button class="tab-btn" data-tab="bitrate">Bitrate</button>
+                        <button class="tab-btn" data-tab="srt">SRT</button>
                         <button class="tab-btn" data-tab="network">Red</button>
                     </div>
 
@@ -195,9 +197,6 @@
                                 <span>Reinicio automático en caso de fallos</span>
                             </label>
                         </div>
-                    </div>
-
-                    <div class="tab-content" id="tab-ffmpeg">
                         <div class="form-group">
                             <label for="settingsFFmpegPath">Ruta de FFmpeg</label>
                             <div class="input-with-button">
@@ -206,26 +205,6 @@
                                     <i class="fas fa-folder-open"></i>
                                 </button>
                             </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="settingsVideoBitrate">Bitrate de Video</label>
-                                <input type="text" id="settingsVideoBitrate" value="10M">
-                            </div>
-                            <div class="form-group">
-                                <label for="settingsAudioBitrate">Bitrate de Audio</label>
-                                <input type="text" id="settingsAudioBitrate" value="192k">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="settingsFrameRate">Frame Rate por defecto</label>
-                            <select id="settingsFrameRate">
-                                <option value="24">24 fps</option>
-                                <option value="25">25 fps</option>
-                                <option value="30" selected>30 fps</option>
-                                <option value="50">50 fps</option>
-                                <option value="60">60 fps</option>
-                            </select>
                         </div>
                         <div class="form-group">
                             <label for="settingsTestPattern">Video Patrón de Prueba</label>
@@ -236,6 +215,151 @@
                                 </button>
                             </div>
                             <small class="form-hint">Video loop para pruebas de conexión SRT</small>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="tab-encoding">
+                        <div class="info-box info-box-blue">
+                            <i class="fas fa-microchip"></i>
+                            <p><strong>Aceleración por Hardware:</strong> Si tienes una tarjeta NVIDIA, selecciona h264_nvenc para mejor rendimiento.</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsVideoEncoder">Encoder de Video</label>
+                            <select id="settingsVideoEncoder">
+                                <option value="libx264">libx264 (CPU - Compatible)</option>
+                                <option value="h264_nvenc">h264_nvenc (NVIDIA GPU)</option>
+                                <option value="h264_qsv">h264_qsv (Intel QuickSync)</option>
+                                <option value="h264_amf">h264_amf (AMD GPU)</option>
+                            </select>
+                            <small class="form-hint">NVENC es recomendado si tienes GPU NVIDIA dedicada</small>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="settingsEncoderPreset">Preset</label>
+                                <select id="settingsEncoderPreset">
+                                    <option value="ultrafast">Ultrafast (más rápido)</option>
+                                    <option value="veryfast">Veryfast (recomendado)</option>
+                                    <option value="fast">Fast</option>
+                                    <option value="medium">Medium (mejor calidad)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="settingsEncoderProfile">Perfil</label>
+                                <select id="settingsEncoderProfile">
+                                    <option value="baseline">Baseline (menor latencia)</option>
+                                    <option value="main">Main (recomendado)</option>
+                                    <option value="high">High (mejor calidad)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="settingsEncoderTune">Tune</label>
+                                <select id="settingsEncoderTune">
+                                    <option value="zerolatency">Zero Latency (streaming)</option>
+                                    <option value="film">Film</option>
+                                    <option value="animation">Animation</option>
+                                    <option value="">Ninguno</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="settingsGopSize">GOP Size (keyframes)</label>
+                                <input type="number" id="settingsGopSize" value="50" min="1" max="300">
+                                <small class="form-hint">Frames entre keyframes (ej: 50 = 2seg a 25fps)</small>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsBFrames">B-Frames</label>
+                            <select id="settingsBFrames">
+                                <option value="0">0 (menor latencia - recomendado)</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3 (mejor compresión)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="tab-bitrate">
+                        <div class="form-group">
+                            <label for="settingsBitrateMode">Modo de Bitrate</label>
+                            <select id="settingsBitrateMode">
+                                <option value="cbr">CBR (Constante - recomendado para streaming)</option>
+                                <option value="vbr">VBR (Variable - mejor calidad)</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="settingsVideoBitrate">Bitrate de Video</label>
+                                <input type="text" id="settingsVideoBitrate" value="5M">
+                                <small class="form-hint">Ej: 3M, 5M, 10M</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="settingsAudioBitrate">Bitrate de Audio</label>
+                                <input type="text" id="settingsAudioBitrate" value="192k">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="settingsMaxBitrate">Max Bitrate</label>
+                                <input type="text" id="settingsMaxBitrate" value="5M">
+                                <small class="form-hint">Para CBR igual al bitrate</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="settingsBufferSize">Buffer Size</label>
+                                <input type="text" id="settingsBufferSize" value="5M">
+                                <small class="form-hint">Igual al bitrate para CBR</small>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsFrameRate">Frame Rate por defecto</label>
+                            <select id="settingsFrameRate">
+                                <option value="24">24 fps</option>
+                                <option value="25">25 fps</option>
+                                <option value="30">30 fps</option>
+                                <option value="50">50 fps</option>
+                                <option value="60">60 fps</option>
+                            </select>
+                        </div>
+                        <div class="info-box">
+                            <i class="fas fa-calculator"></i>
+                            <p><strong>Bitrate recomendado:</strong> 1080p@25fps → 3-5M | 720p@25fps → 2-3M | 576p@25fps → 1.5-2.5M</p>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="tab-srt">
+                        <div class="info-box info-box-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <p><strong>Importante:</strong> La latencia SRT debe coincidir en emisor y receptor. Mayor latencia = más estabilidad.</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsSRTLatency">Latencia SRT (ms)</label>
+                            <input type="number" id="settingsSRTLatency" value="500" min="20" max="8000" step="50">
+                            <small class="form-hint">120ms = baja latencia, 500ms = estable, 1000ms+ = muy estable</small>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="settingsSRTRecvBuffer">Buffer Recepción (MB)</label>
+                                <input type="number" id="settingsSRTRecvBuffer" value="8" min="1" max="64">
+                            </div>
+                            <div class="form-group">
+                                <label for="settingsSRTSendBuffer">Buffer Envío (MB)</label>
+                                <input type="number" id="settingsSRTSendBuffer" value="8" min="1" max="64">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="settingsSRTOverheadBW">Overhead BW (%)</label>
+                                <input type="number" id="settingsSRTOverheadBW" value="25" min="5" max="100">
+                                <small class="form-hint">% extra para retransmisiones</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="settingsSRTPeerIdleTime">Peer Idle Timeout (ms)</label>
+                                <input type="number" id="settingsSRTPeerIdleTime" value="5000" min="1000" max="30000">
+                            </div>
+                        </div>
+                        <div class="info-box info-box-green">
+                            <i class="fas fa-check-circle"></i>
+                            <p><strong>Para "Cannot keep latency":</strong> Aumenta la latencia a 500-1000ms y los buffers a 8-16MB</p>
                         </div>
                     </div>
 

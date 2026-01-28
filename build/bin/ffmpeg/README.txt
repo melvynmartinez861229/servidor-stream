@@ -1,5 +1,5 @@
 ================================================================================
-                         FFMPEG PARA NDI SERVER STREAM
+                         FFMPEG PARA SRT SERVER STREAM
 ================================================================================
 
 FFmpeg v8.0.1 ya está instalado en esta carpeta.

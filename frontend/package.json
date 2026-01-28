@@ -1,7 +1,7 @@
 {
-  "name": "ndi-server-stream-frontend",
+  "name": "srt-server-stream-frontend",
   "version": "1.0.0",
-  "description": "Frontend para NDI Server Stream",
+  "description": "Frontend para SRT Server Stream",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

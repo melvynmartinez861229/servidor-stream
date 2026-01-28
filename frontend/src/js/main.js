@@ -187,7 +187,6 @@ function setupEventListeners() {
     document.getElementById('btnCloseChannelModal')?.addEventListener('click', closeChannelModal);
     document.getElementById('btnCancelChannel')?.addEventListener('click', closeChannelModal);
     document.getElementById('btnSaveChannel')?.addEventListener('click', saveChannel);
-    document.getElementById('btnSelectVideo')?.addEventListener('click', selectVideoPath);
     document.querySelector('#channelModal .modal-overlay')?.addEventListener('click', closeChannelModal);
     
     // Modal de configuración
@@ -320,22 +319,6 @@ function renderChannelGrid() {
                             style="width: 100px;" placeholder="IP">
                         <span>:</span>
                         <span class="srt-port">${channel.srtPort || 9000}</span>
-                    </span>
-                </div>
-                <div class="channel-info-row">
-                    <span class="label">Video</span>
-                    <span class="value video-settings">
-                        <select class="inline-select resolution-select" onchange="updateVideoSettings('${channel.id}')" ${channel.status === 'active' ? 'disabled' : ''}>
-                            <option value="1920x1080" ${channel.resolution === '1920x1080' ? 'selected' : ''}>1080p</option>
-                            <option value="1280x720" ${channel.resolution === '1280x720' ? 'selected' : ''}>720p</option>
-                            <option value="3840x2160" ${channel.resolution === '3840x2160' ? 'selected' : ''}>4K</option>
-                        </select>
-                        <select class="inline-select fps-select" onchange="updateVideoSettings('${channel.id}')" ${channel.status === 'active' ? 'disabled' : ''}>
-                            <option value="25" ${channel.frameRate === 25 ? 'selected' : ''}>25fps</option>
-                            <option value="30" ${channel.frameRate === 30 ? 'selected' : ''}>30fps</option>
-                            <option value="50" ${channel.frameRate === 50 ? 'selected' : ''}>50fps</option>
-                            <option value="60" ${channel.frameRate === 60 ? 'selected' : ''}>60fps</option>
-                        </select>
                     </span>
                 </div>
                 <div class="channel-info-row">
@@ -480,35 +463,6 @@ async function playTestPattern(channelId) {
     }
 }
 
-async function updateVideoSettings(channelId) {
-    const card = document.querySelector(`[data-channel-id="${channelId}"]`);
-    if (!card) return;
-    
-    const resolutionSelect = card.querySelector('.resolution-select');
-    const fpsSelect = card.querySelector('.fps-select');
-    
-    if (!resolutionSelect || !fpsSelect) return;
-    
-    const resolution = resolutionSelect.value;
-    const frameRate = parseInt(fpsSelect.value);
-    
-    try {
-        await window.go.app.App.SetChannelVideoSettings(channelId, resolution, frameRate);
-        
-        // Actualizar estado local
-        const index = state.channels.findIndex(c => c.id === channelId);
-        if (index !== -1) {
-            state.channels[index].resolution = resolution;
-            state.channels[index].frameRate = frameRate;
-        }
-        
-        showToast('success', 'Configuración actualizada', `Video: ${resolution} @ ${frameRate}fps`);
-    } catch (error) {
-        console.error('Error actualizando configuración:', error);
-        showToast('error', 'Error', error.message || 'No se pudo actualizar la configuración');
-    }
-}
-
 async function updateSRTHost(channelId, host) {
     try {
         await window.go.app.App.SetChannelSRTHost(channelId, host);
@@ -586,18 +540,6 @@ function confirmDeleteChannel(channelId) {
     openModal('confirmModal');
 }
 
-async function selectVideoFile(channelId) {
-    try {
-        const path = await window.go.app.App.SelectVideoPath();
-        if (path) {
-            await window.go.app.App.PlayVideoOnChannel(channelId, path);
-            showToast('success', 'Video seleccionado', `Reproduciendo: ${getFileName(path)}`);
-        }
-    } catch (error) {
-        console.error('Error seleccionando video:', error);
-    }
-}
-
 // ==================== Modales ====================
 function openModal(modalId) {
     document.getElementById(modalId)?.classList.add('open');
@@ -651,11 +593,6 @@ async function saveChannel() {
     }
 }
 
-// selectVideoPath ya no es necesario - Aximmetry envía el video
-async function selectVideoPath() {
-    showToast('info', 'Información', 'Aximmetry envía la ruta del video vía WebSocket');
-}
-
 function openSettingsModal() {
     if (state.config) {
         applyConfigToForm();
@@ -678,17 +615,7 @@ function switchSettingsTab(tabId) {
 
 async function saveSettings() {
     try {
-        const config = {
-            webSocketPort: parseInt(document.getElementById('settingsWSPort').value),
-            ffmpegPath: document.getElementById('settingsFFmpegPath').value,
-            autoRestart: document.getElementById('settingsAutoRestart').checked,
-            defaultVideoBitrate: document.getElementById('settingsVideoBitrate').value,
-            defaultAudioBitrate: document.getElementById('settingsAudioBitrate').value,
-            defaultFrameRate: parseInt(document.getElementById('settingsFrameRate').value),
-            testPatternPath: document.getElementById('settingsTestPattern').value,
-            srtPrefix: document.getElementById('settingsSRTPrefix').value,
-            theme: document.getElementById('settingsTheme').value
-        };
+        const config = getConfigFromForm();
         
         await window.go.app.App.UpdateConfig(config);
         state.config = config;
@@ -704,15 +631,77 @@ async function saveSettings() {
 function applyConfigToForm() {
     if (!state.config) return;
     
+    // General
     document.getElementById('settingsWSPort').value = state.config.webSocketPort || 8765;
     document.getElementById('settingsFFmpegPath').value = state.config.ffmpegPath || 'ffmpeg';
     document.getElementById('settingsAutoRestart').checked = state.config.autoRestart !== false;
-    document.getElementById('settingsVideoBitrate').value = state.config.defaultVideoBitrate || '10M';
-    document.getElementById('settingsAudioBitrate').value = state.config.defaultAudioBitrate || '192k';
-    document.getElementById('settingsFrameRate').value = state.config.defaultFrameRate || 30;
     document.getElementById('settingsTestPattern').value = state.config.testPatternPath || '';
     document.getElementById('settingsSRTPrefix').value = state.config.srtPrefix || 'SRT_SERVER_';
     document.getElementById('settingsTheme').value = state.config.theme || 'dark';
+    
+    // Encoding
+    document.getElementById('settingsVideoEncoder').value = state.config.videoEncoder || 'libx264';
+    document.getElementById('settingsEncoderPreset').value = state.config.encoderPreset || 'veryfast';
+    document.getElementById('settingsEncoderProfile').value = state.config.encoderProfile || 'main';
+    document.getElementById('settingsEncoderTune').value = state.config.encoderTune || 'zerolatency';
+    document.getElementById('settingsGopSize').value = state.config.gopSize || 50;
+    document.getElementById('settingsBFrames').value = state.config.bFrames || 0;
+    
+    // Bitrate
+    document.getElementById('settingsBitrateMode').value = state.config.bitrateMode || 'cbr';
+    document.getElementById('settingsVideoBitrate').value = state.config.defaultVideoBitrate || '5M';
+    document.getElementById('settingsAudioBitrate').value = state.config.defaultAudioBitrate || '192k';
+    document.getElementById('settingsMaxBitrate').value = state.config.maxBitrate || '5M';
+    document.getElementById('settingsBufferSize').value = state.config.bufferSize || '5M';
+    document.getElementById('settingsFrameRate').value = state.config.defaultFrameRate || 25;
+    
+    // SRT
+    document.getElementById('settingsSRTLatency').value = state.config.srtLatency || 500;
+    document.getElementById('settingsSRTRecvBuffer').value = (state.config.srtRecvBuffer || 8388608) / 1048576; // Convertir a MB
+    document.getElementById('settingsSRTSendBuffer').value = (state.config.srtSendBuffer || 8388608) / 1048576;
+    document.getElementById('settingsSRTOverheadBW').value = state.config.srtOverheadBW || 25;
+    document.getElementById('settingsSRTPeerIdleTime').value = state.config.srtPeerIdleTime || 5000;
+}
+
+function getConfigFromForm() {
+    return {
+        // General
+        webSocketPort: parseInt(document.getElementById('settingsWSPort').value) || 8765,
+        ffmpegPath: document.getElementById('settingsFFmpegPath').value || 'ffmpeg',
+        autoRestart: document.getElementById('settingsAutoRestart').checked,
+        testPatternPath: document.getElementById('settingsTestPattern').value || '',
+        srtPrefix: document.getElementById('settingsSRTPrefix').value || 'SRT_SERVER_',
+        theme: document.getElementById('settingsTheme').value || 'dark',
+        language: state.config?.language || 'es',
+        maxLogLines: state.config?.maxLogLines || 1000,
+        defaultVideoPath: state.config?.defaultVideoPath || '',
+        logPath: state.config?.logPath || '',
+        srtGroup: state.config?.srtGroup || '',
+        
+        // Encoding
+        videoEncoder: document.getElementById('settingsVideoEncoder').value || 'libx264',
+        encoderPreset: document.getElementById('settingsEncoderPreset').value || 'veryfast',
+        encoderProfile: document.getElementById('settingsEncoderProfile').value || 'main',
+        encoderTune: document.getElementById('settingsEncoderTune').value || 'zerolatency',
+        gopSize: parseInt(document.getElementById('settingsGopSize').value) || 50,
+        bFrames: parseInt(document.getElementById('settingsBFrames').value) || 0,
+        
+        // Bitrate
+        bitrateMode: document.getElementById('settingsBitrateMode').value || 'cbr',
+        defaultVideoBitrate: document.getElementById('settingsVideoBitrate').value || '5M',
+        defaultAudioBitrate: document.getElementById('settingsAudioBitrate').value || '192k',
+        maxBitrate: document.getElementById('settingsMaxBitrate').value || '5M',
+        bufferSize: document.getElementById('settingsBufferSize').value || '5M',
+        defaultFrameRate: parseInt(document.getElementById('settingsFrameRate').value) || 25,
+        crf: state.config?.crf || 23,
+        
+        // SRT (convertir MB a bytes)
+        srtLatency: parseInt(document.getElementById('settingsSRTLatency').value) || 500,
+        srtRecvBuffer: (parseInt(document.getElementById('settingsSRTRecvBuffer').value) || 8) * 1048576,
+        srtSendBuffer: (parseInt(document.getElementById('settingsSRTSendBuffer').value) || 8) * 1048576,
+        srtOverheadBW: parseInt(document.getElementById('settingsSRTOverheadBW').value) || 25,
+        srtPeerIdleTime: parseInt(document.getElementById('settingsSRTPeerIdleTime').value) || 5000
+    };
 }
 
 function closeConfirmModal() {
@@ -851,8 +840,6 @@ window.startChannel = startChannel;
 window.stopChannel = stopChannel;
 window.editChannel = editChannel;
 window.confirmDeleteChannel = confirmDeleteChannel;
-window.selectVideoFile = selectVideoFile;
 window.playTestPattern = playTestPattern;
 window.copySRTUrl = copySRTUrl;
-window.updateVideoSettings = updateVideoSettings;
 window.updateSRTHost = updateSRTHost;
