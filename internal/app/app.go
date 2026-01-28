@@ -67,6 +67,19 @@ func (a *App) Startup(ctx context.Context) {
 
 	// Inicializar servidor WebSocket
 	a.wsServer = websocket.NewServer(cfg.WebSocketPort, a.handleWebSocketMessage)
+
+	// Configurar callbacks para eventos de clientes
+	a.wsServer.SetClientCallbacks(
+		func(client websocket.ClientInfo) {
+			a.AddLog("INFO", fmt.Sprintf("Cliente conectado: %s (%s)", client.Name, client.RemoteAddr), "")
+			runtime.EventsEmit(a.ctx, "client:connected", client)
+		},
+		func(clientID string) {
+			a.AddLog("INFO", fmt.Sprintf("Cliente desconectado: %s", clientID), "")
+			runtime.EventsEmit(a.ctx, "client:disconnected", clientID)
+		},
+	)
+
 	go a.wsServer.Start(cancelCtx)
 
 	// Iniciar monitor de canales
@@ -183,6 +196,7 @@ func (a *App) StartChannel(channelID string) error {
 		InputPath:     inputPath,
 		SRTStreamName: ch.SRTStreamName,
 		SRTPort:       ch.SRTPort,
+		SRTHost:       ch.SRTHost,
 		VideoBitrate:  a.config.DefaultVideoBitrate,
 		AudioBitrate:  a.config.DefaultAudioBitrate,
 		FrameRate:     a.config.DefaultFrameRate,
@@ -197,7 +211,7 @@ func (a *App) StartChannel(channelID string) error {
 	}
 
 	a.channelManager.SetStatus(channelID, channel.StatusActive)
-	a.AddLog("INFO", fmt.Sprintf("Stream SRT iniciado: %s -> srt://0.0.0.0:%d", ch.Label, ch.SRTPort), channelID)
+	a.AddLog("INFO", fmt.Sprintf("Stream SRT iniciado: %s -> srt://%s:%d", ch.Label, ch.SRTHost, ch.SRTPort), channelID)
 	runtime.EventsEmit(a.ctx, "channel:status", map[string]interface{}{
 		"channelId": channelID,
 		"status":    channel.StatusActive,
@@ -259,6 +273,7 @@ func (a *App) PlayTestPattern(channelID string) error {
 		InputPath:     a.config.TestPatternPath,
 		SRTStreamName: ch.SRTStreamName,
 		SRTPort:       ch.SRTPort,
+		SRTHost:       ch.SRTHost,
 		VideoBitrate:  a.config.DefaultVideoBitrate,
 		AudioBitrate:  a.config.DefaultAudioBitrate,
 		FrameRate:     frameRate,
@@ -267,7 +282,7 @@ func (a *App) PlayTestPattern(channelID string) error {
 		Loop:          true, // El patrón siempre en loop
 	}
 
-	a.AddLog("INFO", fmt.Sprintf("Iniciando FFmpeg: %dx%d @ %dfps", width, height, frameRate), channelID)
+	a.AddLog("INFO", fmt.Sprintf("Iniciando FFmpeg: %dx%d @ %dfps en %s:%d", width, height, frameRate, ch.SRTHost, ch.SRTPort), channelID)
 
 	err = a.ffmpegManager.Start(ffmpegConfig)
 	if err != nil {
@@ -314,6 +329,18 @@ func (a *App) SetChannelVideoSettings(channelID, resolution string, frameRate in
 	}
 
 	a.AddLog("INFO", fmt.Sprintf("Configuración de video actualizada: %s @ %dfps", resolution, frameRate), channelID)
+	runtime.EventsEmit(a.ctx, "channel:updated", nil)
+	return nil
+}
+
+// SetChannelSRTHost establece la IP/Host SRT de un canal
+func (a *App) SetChannelSRTHost(channelID, host string) error {
+	err := a.channelManager.SetSRTHost(channelID, host)
+	if err != nil {
+		return err
+	}
+
+	a.AddLog("INFO", fmt.Sprintf("IP SRT actualizada: %s", host), channelID)
 	runtime.EventsEmit(a.ctx, "channel:updated", nil)
 	return nil
 }
@@ -460,17 +487,34 @@ func (a *App) PlayVideoOnChannel(channelID, videoPath string) error {
 	// Actualizar la ruta del video
 	a.channelManager.SetCurrentFile(channelID, videoPath)
 
+	// Parsear resolución del canal
+	width, height := 1920, 1080 // Valores por defecto
+	if ch.Resolution != "" {
+		fmt.Sscanf(ch.Resolution, "%dx%d", &width, &height)
+	}
+
+	// Usar FPS del canal o el por defecto
+	frameRate := ch.FrameRate
+	if frameRate == 0 {
+		frameRate = a.config.DefaultFrameRate
+	}
+
 	// Iniciar con el nuevo video (SRT)
 	ffmpegConfig := ffmpeg.StreamConfig{
 		ChannelID:     ch.ID,
 		InputPath:     videoPath,
 		SRTStreamName: ch.SRTStreamName,
 		SRTPort:       ch.SRTPort,
+		SRTHost:       ch.SRTHost,
 		VideoBitrate:  a.config.DefaultVideoBitrate,
 		AudioBitrate:  a.config.DefaultAudioBitrate,
-		FrameRate:     a.config.DefaultFrameRate,
+		FrameRate:     frameRate,
+		Width:         width,
+		Height:        height,
 		Loop:          true,
 	}
+
+	a.AddLog("INFO", fmt.Sprintf("Iniciando FFmpeg: %dx%d @ %dfps en %s:%d", width, height, frameRate, ch.SRTHost, ch.SRTPort), channelID)
 
 	err = a.ffmpegManager.Start(ffmpegConfig)
 	if err != nil {
@@ -504,11 +548,17 @@ func (a *App) AddLog(level, message, channelID string) {
 	}
 
 	a.logMutex.Lock()
-	a.logBuffer = append(a.logBuffer, entry)
-	// Mantener solo los últimos 1000 logs
-	if len(a.logBuffer) > 1000 {
-		a.logBuffer = a.logBuffer[100:]
+	// Pool de logs con máximo configurable (default 1000)
+	// Cuando se excede el límite, se elimina el log más antiguo (índice 0) para optimizar memoria
+	maxLogs := 1000
+	if a.config != nil && a.config.MaxLogLines > 0 {
+		maxLogs = a.config.MaxLogLines
 	}
+	if len(a.logBuffer) >= maxLogs {
+		// Eliminar el primer elemento (índice 0) desplazando el slice
+		a.logBuffer = a.logBuffer[1:]
+	}
+	a.logBuffer = append(a.logBuffer, entry)
 	a.logMutex.Unlock()
 
 	// Emitir evento al frontend
@@ -520,6 +570,18 @@ func (a *App) AddLog(level, message, channelID string) {
 
 // handleWebSocketMessage maneja mensajes WebSocket de clientes Aximmetry
 func (a *App) handleWebSocketMessage(clientID string, message []byte) []byte {
+	// Log del mensaje raw para debug
+	a.AddLog("DEBUG", fmt.Sprintf("WebSocket raw message: %s", string(message)), "")
+
+	// Manejar formato Socket.IO (prefijos numéricos como "42")
+	msgStr := string(message)
+	jsonStart := strings.Index(msgStr, "{")
+	if jsonStart > 0 {
+		// Hay un prefijo antes del JSON, eliminarlo
+		a.AddLog("DEBUG", fmt.Sprintf("Detectado prefijo Socket.IO: %s", msgStr[:jsonStart]), "")
+		message = []byte(msgStr[jsonStart:])
+	}
+
 	var msg websocket.Message
 	if err := json.Unmarshal(message, &msg); err != nil {
 		a.AddLog("ERROR", fmt.Sprintf("Error parseando mensaje WebSocket: %v", err), "")
@@ -550,8 +612,11 @@ func (a *App) handleWebSocketMessage(clientID string, message []byte) []byte {
 // handlePlayVideoRequest maneja solicitudes directas de Aximmetry para reproducir un video
 // Este es el flujo principal: Aximmetry envía la ruta del video que quiere ver
 func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []byte {
+	a.AddLog("DEBUG", fmt.Sprintf("handlePlayVideoRequest: filePath=%s, channelId=%s", msg.FilePath, msg.ChannelID), "")
+
 	// Validar que se proporcionó una ruta de video
 	if msg.FilePath == "" {
+		a.AddLog("ERROR", "FilePath vacío en solicitud play_video", "")
 		return websocket.ErrorResponse("missing_file_path", "Se requiere la ruta del video (filePath)")
 	}
 
@@ -561,20 +626,30 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 		return websocket.ErrorResponse("file_not_found", fmt.Sprintf("Archivo no encontrado: %s", msg.FilePath))
 	}
 
+	a.AddLog("DEBUG", fmt.Sprintf("Archivo verificado: %s", msg.FilePath), "")
+
 	// Determinar el canal a usar
 	var channelID string
 	var streamName string
 	var srtPort int
+	var srtHost string
 
 	if msg.ChannelID != "" {
-		// Si se especifica un canal, usarlo
+		// Si se especifica un canal, buscarlo por ID o por Label
 		ch, err := a.channelManager.Get(msg.ChannelID)
 		if err != nil {
-			return websocket.ErrorResponse("channel_not_found", "Canal no encontrado")
+			// Buscar por label si no se encontró por ID
+			ch = a.channelManager.GetByLabel(msg.ChannelID)
+			if ch == nil {
+				a.AddLog("ERROR", fmt.Sprintf("Canal no encontrado: %s", msg.ChannelID), "")
+				return websocket.ErrorResponse("channel_not_found", fmt.Sprintf("Canal '%s' no encontrado. Crea el canal primero o no envíes channelId para crear uno automático.", msg.ChannelID))
+			}
 		}
 		channelID = ch.ID
 		streamName = ch.SRTStreamName
 		srtPort = ch.SRTPort
+		srtHost = ch.SRTHost
+		a.AddLog("DEBUG", fmt.Sprintf("Usando canal existente: %s (SRT %s:%d)", ch.Label, srtHost, srtPort), channelID)
 	} else {
 		// Crear o reutilizar un canal para este cliente
 		// Buscar si el cliente ya tiene un canal asignado
@@ -584,6 +659,7 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 				channelID = ch.ID
 				streamName = ch.SRTStreamName
 				srtPort = ch.SRTPort
+				srtHost = ch.SRTHost
 				break
 			}
 		}
@@ -599,10 +675,11 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 			channelID = ch.ID
 			streamName = ch.SRTStreamName
 			srtPort = ch.SRTPort
+			srtHost = ch.SRTHost
 
 			// Notificar al frontend del nuevo canal
 			runtime.EventsEmit(a.ctx, "channel:added", ch)
-			a.AddLog("INFO", fmt.Sprintf("Canal creado automáticamente para cliente %s: SRT puerto %d", clientID[:8], srtPort), channelID)
+			a.AddLog("INFO", fmt.Sprintf("Canal creado automáticamente para cliente %s: SRT %s:%d", clientID[:8], srtHost, srtPort), channelID)
 		}
 	}
 
@@ -612,9 +689,12 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 		return websocket.ErrorResponse("play_error", err.Error())
 	}
 
-	// Obtener la IP del servidor para la URL SRT
-	serverIP := a.getServerIP()
-	srtURL := fmt.Sprintf("srt://%s:%d", serverIP, srtPort)
+	// Usar el SRTHost configurado en el canal, o detectar automáticamente si es 0.0.0.0
+	displayHost := srtHost
+	if displayHost == "" || displayHost == "0.0.0.0" {
+		displayHost = a.getServerIP()
+	}
+	srtURL := fmt.Sprintf("srt://%s:%d", displayHost, srtPort)
 
 	a.AddLog("INFO", fmt.Sprintf("Aximmetry [%s] solicitó: %s -> %s", clientID[:8], filepath.Base(msg.FilePath), srtURL), channelID)
 
@@ -622,6 +702,7 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 		"channelId":  channelID,
 		"streamName": streamName,
 		"srtPort":    srtPort,
+		"srtHost":    srtHost,
 		"srtUrl":     srtURL,
 		"filePath":   msg.FilePath,
 		"message":    fmt.Sprintf("Video disponible en: %s", srtURL),
@@ -735,13 +816,6 @@ func (a *App) onFFmpegEvent(event ffmpeg.Event) {
 				go a.attemptRestart(event.ChannelID)
 			}
 		}
-	case ffmpeg.EventProgress:
-		// Actualizar progreso en el canal
-		runtime.EventsEmit(a.ctx, "channel:progress", map[string]interface{}{
-			"channelId": event.ChannelID,
-			"progress":  event.Data,
-		})
-		return // No emitir channel:status para progreso
 	default:
 		return
 	}

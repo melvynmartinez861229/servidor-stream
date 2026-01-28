@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +39,7 @@ type StreamConfig struct {
 	InputPath     string
 	SRTStreamName string // Nombre identificador del stream SRT
 	SRTPort       int    // Puerto SRT para este canal
+	SRTHost       string // IP/Host para el stream SRT
 	VideoBitrate  string
 	AudioBitrate  string
 	FrameRate     int
@@ -396,13 +396,18 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		srtPort = 9000 // Puerto por defecto
 	}
 
+	srtHost := config.SRTHost
+	if srtHost == "" {
+		srtHost = "0.0.0.0" // Por defecto escucha en todas las interfaces
+	}
+
 	// Formato MPEG-TS para SRT con parámetros optimizados para BAJA LATENCIA
 	// latency=120000 = 120ms (suficiente para local, mucho más fluido)
 	// rcvbuf/sndbuf optimizados para menor delay
 	args = append(args,
 		"-f", "mpegts",
 		"-muxrate", "6M", // Tasa de mux fija para estabilidad
-		fmt.Sprintf("srt://0.0.0.0:%d?mode=listener&latency=120000&pkt_size=1316&rcvbuf=1000000&sndbuf=1000000&listen_timeout=-1", srtPort),
+		fmt.Sprintf("srt://%s:%d?mode=listener&latency=120000&pkt_size=1316&rcvbuf=1000000&sndbuf=1000000&listen_timeout=-1", srtHost, srtPort),
 	)
 
 	return args
@@ -475,66 +480,15 @@ func (m *Manager) monitorProcess(channelID string, proc *ffmpegProcess) {
 	m.mutex.Unlock()
 }
 
-// parseProgress parsea la salida de FFmpeg para obtener progreso
+// parseProgress lee la salida de FFmpeg para logging y detección de errores
 func (m *Manager) parseProgress(channelID string, proc *ffmpegProcess) {
 	scanner := bufio.NewScanner(proc.stderr)
-
-	// Regex para parsear línea de progreso de FFmpeg
-	frameRegex := regexp.MustCompile(`frame=\s*(\d+)`)
-	fpsRegex := regexp.MustCompile(`fps=\s*([\d.]+)`)
-	bitrateRegex := regexp.MustCompile(`bitrate=\s*([\d.]+\s*\w+/s)`)
-	sizeRegex := regexp.MustCompile(`size=\s*(\d+)\s*\w+`)
-	timeRegex := regexp.MustCompile(`time=\s*([\d:.]+)`)
-	speedRegex := regexp.MustCompile(`speed=\s*([\d.]+x)`)
 
 	for scanner.Scan() {
 		line := scanner.Text()
 
 		// Log para debugging
 		log.Printf("[FFmpeg %s] %s", channelID, line)
-
-		// Parsear progreso
-		progress := Progress{}
-
-		if matches := frameRegex.FindStringSubmatch(line); len(matches) > 1 {
-			progress.Frame, _ = strconv.ParseInt(matches[1], 10, 64)
-		}
-		if matches := fpsRegex.FindStringSubmatch(line); len(matches) > 1 {
-			progress.FPS, _ = strconv.ParseFloat(matches[1], 64)
-		}
-		if matches := bitrateRegex.FindStringSubmatch(line); len(matches) > 1 {
-			progress.Bitrate = matches[1]
-		}
-		if matches := sizeRegex.FindStringSubmatch(line); len(matches) > 1 {
-			progress.TotalSize, _ = strconv.ParseInt(matches[1], 10, 64)
-		}
-		if matches := timeRegex.FindStringSubmatch(line); len(matches) > 1 {
-			progress.OutTime = matches[1]
-		}
-		if matches := speedRegex.FindStringSubmatch(line); len(matches) > 1 {
-			progress.Speed = matches[1]
-		}
-
-		// Actualizar progreso si hay datos válidos
-		if progress.Frame > 0 || progress.FPS > 0 {
-			m.mutex.Lock()
-			if p, exists := m.processes[channelID]; exists {
-				p.progress = progress
-			}
-			m.mutex.Unlock()
-
-			m.emitEvent(Event{
-				Type:      EventProgress,
-				ChannelID: channelID,
-				Data: map[string]interface{}{
-					"frame":   progress.Frame,
-					"fps":     progress.FPS,
-					"bitrate": progress.Bitrate,
-					"time":    progress.OutTime,
-					"speed":   progress.Speed,
-				},
-			})
-		}
 
 		// Detectar errores
 		if strings.Contains(strings.ToLower(line), "error") {

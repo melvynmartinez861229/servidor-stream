@@ -153,13 +153,6 @@
                             <input type="text" id="channelSRTName" placeholder="Ej: SRT_CANAL_1">
                             <small class="form-help">Nombre con el que Aximmetry recibirá el stream (auto-generado si se deja vacío)</small>
                         </div>
-
-                        <div class="form-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="channelPreviewEnabled" checked>
-                                <span>Habilitar previsualización</span>
-                            </label>
-                        </div>
                     </form>
                 </div>
                 <div class="modal-footer">
@@ -185,7 +178,6 @@
                     <div class="settings-tabs">
                         <button class="tab-btn active" data-tab="general">General</button>
                         <button class="tab-btn" data-tab="ffmpeg">FFmpeg</button>
-                        <button class="tab-btn" data-tab="preview">Previews</button>
                         <button class="tab-btn" data-tab="network">Red</button>
                     </div>
 
@@ -244,28 +236,6 @@
                                 </button>
                             </div>
                             <small class="form-hint">Video loop para pruebas de conexión SRT</small>
-                        </div>
-                    </div>
-
-                    <div class="tab-content" id="tab-preview">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="settingsPreviewWidth">Ancho</label>
-                                <input type="number" id="settingsPreviewWidth" value="320">
-                            </div>
-                            <div class="form-group">
-                                <label for="settingsPreviewHeight">Alto</label>
-                                <input type="number" id="settingsPreviewHeight" value="180">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="settingsPreviewQuality">Calidad (%)</label>
-                            <input type="range" id="settingsPreviewQuality" min="20" max="100" value="60">
-                            <span id="previewQualityValue">60%</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="settingsPreviewInterval">Intervalo de actualización (ms)</label>
-                            <input type="number" id="settingsPreviewInterval" value="2000">
                         </div>
                     </div>
 

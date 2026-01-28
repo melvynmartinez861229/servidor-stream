@@ -1,35 +1,17 @@
 [
   {
-    "id": "53157bf2-fdda-4a30-9609-e8599981940e",
-    "label": "111",
+    "id": "6057f35f-122c-4954-bf95-5604896031af",
+    "label": "A",
     "videoPath": "",
-    "srtStreamName": "111",
+    "srtStreamName": "B",
     "srtPort": 9000,
-    "resolution": "",
-    "frameRate": 0,
-    "status": "active",
-    "currentFile": "C:\\Users\\melvy\\Downloads\\CORRIDA DO BICHO_1080mobile portugues.mp4",
-    "createdAt": "2026-01-27T22:12:44.3205957-05:00",
-    "updatedAt": "2026-01-28T00:18:33.592214-05:00",
-    "stats": {
-      "framesProcessed": 0,
-      "bytesSent": 0,
-      "uptime": 0,
-      "errorCount": 0
-    }
-  },
-  {
-    "id": "6e9d6e9d-bf84-4cf4-a5f0-778312fe807b",
-    "label": "222",
-    "videoPath": "",
-    "srtStreamName": "222",
-    "srtPort": 9001,
+    "srtHost": "127.0.0.1",
     "resolution": "1920x1080",
     "frameRate": 30,
     "status": "inactive",
-    "currentFile": "",
-    "createdAt": "2026-01-28T00:20:06.5380657-05:00",
-    "updatedAt": "2026-01-28T00:20:06.5380657-05:00",
+    "currentFile": "C:\\test.mp4",
+    "createdAt": "2026-01-28T10:30:27.7848302-05:00",
+    "updatedAt": "2026-01-28T11:18:57.619793-05:00",
     "stats": {
       "framesProcessed": 0,
       "bytesSent": 0,

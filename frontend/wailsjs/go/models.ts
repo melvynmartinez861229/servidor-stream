@@ -49,6 +49,7 @@ export namespace channel {
 	    videoPath: string;
 	    srtStreamName: string;
 	    srtPort: number;
+	    srtHost: string;
 	    resolution: string;
 	    frameRate: number;
 	    status: string;
@@ -71,6 +72,7 @@ export namespace channel {
 	        this.videoPath = source["videoPath"];
 	        this.srtStreamName = source["srtStreamName"];
 	        this.srtPort = source["srtPort"];
+	        this.srtHost = source["srtHost"];
 	        this.resolution = source["resolution"];
 	        this.frameRate = source["frameRate"];
 	        this.status = source["status"];

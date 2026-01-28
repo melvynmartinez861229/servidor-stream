@@ -29,6 +29,7 @@ type Channel struct {
 	VideoPath     string    `json:"videoPath"`
 	SRTStreamName string    `json:"srtStreamName"` // Nombre identificador del stream SRT
 	SRTPort       int       `json:"srtPort"`       // Puerto SRT para este canal
+	SRTHost       string    `json:"srtHost"`       // IP/Host para el stream SRT (default: 0.0.0.0)
 	Resolution    string    `json:"resolution"`    // Resolución de salida (ej: "1920x1080")
 	FrameRate     int       `json:"frameRate"`     // FPS de salida
 	Status        Status    `json:"status"`
@@ -125,6 +126,7 @@ func (m *Manager) Add(label, videoPath, srtStreamName string) (*Channel, error) 
 		VideoPath:     videoPath,
 		SRTStreamName: srtStreamName,
 		SRTPort:       srtPort,
+		SRTHost:       "0.0.0.0",   // Por defecto escucha en todas las interfaces
 		Resolution:    "1920x1080", // Valor por defecto
 		FrameRate:     30,          // Valor por defecto
 		Status:        StatusInactive,
@@ -184,6 +186,20 @@ func (m *Manager) GetBySRTName(srtName string) (*Channel, error) {
 	}
 
 	return nil, errors.New("canal no encontrado")
+}
+
+// GetByLabel obtiene un canal por su nombre/label
+func (m *Manager) GetByLabel(label string) *Channel {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	for _, ch := range m.channels {
+		if ch.Label == label {
+			return ch
+		}
+	}
+
+	return nil
 }
 
 // GetAll retorna todos los canales
@@ -295,6 +311,25 @@ func (m *Manager) SetVideoSettings(channelID, resolution string, frameRate int) 
 
 	channel.Resolution = resolution
 	channel.FrameRate = frameRate
+	channel.UpdatedAt = time.Now()
+
+	// Persistir cambios
+	m.saveToDisk()
+
+	return nil
+}
+
+// SetSRTHost establece la IP/Host SRT de un canal
+func (m *Manager) SetSRTHost(channelID, host string) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	channel, exists := m.channels[channelID]
+	if !exists {
+		return errors.New("canal no encontrado")
+	}
+
+	channel.SRTHost = host
 	channel.UpdatedAt = time.Now()
 
 	// Persistir cambios

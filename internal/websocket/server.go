@@ -56,12 +56,14 @@ type Client struct {
 
 // Server servidor WebSocket
 type Server struct {
-	port           int
-	clients        map[string]*Client
-	mutex          sync.RWMutex
-	upgrader       websocket.Upgrader
-	messageHandler func(clientID string, message []byte) []byte
-	httpServer     *http.Server
+	port               int
+	clients            map[string]*Client
+	mutex              sync.RWMutex
+	upgrader           websocket.Upgrader
+	messageHandler     func(clientID string, message []byte) []byte
+	onClientConnect    func(client ClientInfo)
+	onClientDisconnect func(clientID string)
+	httpServer         *http.Server
 }
 
 // NewServer crea un nuevo servidor WebSocket
@@ -203,18 +205,43 @@ func (s *Server) registerClient(client *Client) {
 	s.mutex.Lock()
 	s.clients[client.ID] = client
 	s.mutex.Unlock()
+
+	// Notificar conexión
+	if s.onClientConnect != nil {
+		s.onClientConnect(ClientInfo{
+			ID:            client.ID,
+			Name:          client.Name,
+			ConnectedAt:   client.connectedAt,
+			LastMessageAt: client.lastMessageAt,
+			MessageCount:  client.messageCount,
+			RemoteAddr:    client.remoteAddr,
+		})
+	}
 }
 
 // unregisterClient elimina un cliente
 func (s *Server) unregisterClient(client *Client) {
+	clientID := client.ID
+
 	s.mutex.Lock()
-	if _, ok := s.clients[client.ID]; ok {
-		delete(s.clients, client.ID)
+	if _, ok := s.clients[clientID]; ok {
+		delete(s.clients, clientID)
 		close(client.send)
 	}
 	s.mutex.Unlock()
 
-	log.Printf("Cliente desconectado: %s (%s)", client.Name, client.ID)
+	log.Printf("Cliente desconectado: %s (%s)", client.Name, clientID)
+
+	// Notificar desconexión
+	if s.onClientDisconnect != nil {
+		s.onClientDisconnect(clientID)
+	}
+}
+
+// SetClientCallbacks establece los callbacks para eventos de clientes
+func (s *Server) SetClientCallbacks(onConnect func(ClientInfo), onDisconnect func(string)) {
+	s.onClientConnect = onConnect
+	s.onClientDisconnect = onDisconnect
 }
 
 // GetClients retorna información de los clientes conectados

@@ -125,12 +125,7 @@ function setupWailsEvents() {
         if (index !== -1) {
             // Preservar status actual si el canal viene con status inactivo pero el stream sigue
             const currentStatus = state.channels[index].status;
-            const currentPreview = state.channels[index].previewBase64;
             state.channels[index] = channel;
-            // Preservar preview
-            if (currentPreview && !channel.previewBase64) {
-                state.channels[index].previewBase64 = currentPreview;
-            }
             renderChannelList();
             // No hacer renderChannelGrid completo - solo actualizar status
             updateChannelCardStatus(channel.id, state.channels[index]);
@@ -155,20 +150,6 @@ function setupWailsEvents() {
         }
     });
     
-    // Progreso del canal
-    window.runtime.EventsOn('channel:progress', (data) => {
-        console.log('[PROGRESS]', data.channelId, data.progress);
-        const statsRow = document.querySelector(`[data-channel-id="${data.channelId}"] .channel-stats-row`);
-        if (statsRow && data.progress) {
-            const framesEl = statsRow.querySelector('.stat-frames');
-            const fpsEl = statsRow.querySelector('.stat-fps');
-            const timeEl = statsRow.querySelector('.stat-time');
-            if (framesEl) framesEl.textContent = data.progress.frame || 0;
-            if (fpsEl) fpsEl.textContent = `${data.progress.fps?.toFixed(1) || 0}`;
-            if (timeEl) timeEl.textContent = data.progress.time || '00:00:00';
-        }
-    });
-    
     // Nuevo log
     window.runtime.EventsOn('log:new', (entry) => {
         state.logs.push(entry);
@@ -176,6 +157,20 @@ function setupWailsEvents() {
             state.logs.shift();
         }
         appendLogEntry(entry);
+    });
+    
+    // Cliente WebSocket conectado
+    window.runtime.EventsOn('client:connected', (client) => {
+        console.log('[EVENT] client:connected', client);
+        state.connectedClients.push(client);
+        updateClientCount();
+    });
+    
+    // Cliente WebSocket desconectado
+    window.runtime.EventsOn('client:disconnected', (clientId) => {
+        console.log('[EVENT] client:disconnected', clientId);
+        state.connectedClients = state.connectedClients.filter(c => c.id !== clientId);
+        updateClientCount();
     });
 }
 
@@ -205,11 +200,6 @@ function setupEventListeners() {
     // Tabs de configuración
     document.querySelectorAll('.settings-tabs .tab-btn').forEach(btn => {
         btn.addEventListener('click', (e) => switchSettingsTab(e.target.dataset.tab));
-    });
-    
-    // Preview quality slider
-    document.getElementById('settingsPreviewQuality')?.addEventListener('input', (e) => {
-        document.getElementById('previewQualityValue').textContent = e.target.value + '%';
     });
     
     // Logs panel
@@ -309,7 +299,7 @@ function renderChannelGrid() {
             <div class="channel-card-header">
                 <div class="channel-card-title">
                     <span class="status-indicator ${channel.status}"></span>
-                    <h3>${escapeHtml(channel.label)}</h3>
+                    <h3>${escapeHtml(channel.label)} <span class="channel-id-label">${channel.id.substring(0, 8)}</span></h3>
                 </div>
                 <div class="channel-card-actions">
                     <button class="btn btn-icon btn-sm" onclick="editChannel('${channel.id}')" title="Editar">
@@ -321,14 +311,16 @@ function renderChannelGrid() {
                 </div>
             </div>
             <div class="channel-card-body">
-                <div class="channel-stats-row">
-                    <span class="stat"><i class="fas fa-film"></i> <span class="stat-frames">0</span></span>
-                    <span class="stat"><i class="fas fa-tachometer-alt"></i> <span class="stat-fps">0</span> <small>fps</small></span>
-                    <span class="stat"><i class="fas fa-clock"></i> <span class="stat-time">00:00:00</span></span>
-                </div>
                 <div class="channel-info-row">
-                    <span class="label">Puerto SRT</span>
-                    <span class="value srt-port">${channel.srtPort || 9000}</span>
+                    <span class="label">SRT</span>
+                    <span class="value srt-address">
+                        <input type="text" class="inline-input srt-host-input" value="${channel.srtHost || '0.0.0.0'}" 
+                            onchange="updateSRTHost('${channel.id}', this.value)" 
+                            ${channel.status === 'active' ? 'disabled' : ''} 
+                            style="width: 100px;" placeholder="IP">
+                        <span>:</span>
+                        <span class="srt-port">${channel.srtPort || 9000}</span>
+                    </span>
                 </div>
                 <div class="channel-info-row">
                     <span class="label">Video</span>
@@ -517,6 +509,23 @@ async function updateVideoSettings(channelId) {
     }
 }
 
+async function updateSRTHost(channelId, host) {
+    try {
+        await window.go.app.App.SetChannelSRTHost(channelId, host);
+        
+        // Actualizar estado local
+        const index = state.channels.findIndex(c => c.id === channelId);
+        if (index !== -1) {
+            state.channels[index].srtHost = host;
+        }
+        
+        showToast('success', 'IP SRT actualizada', `Stream en: ${host}`);
+    } catch (error) {
+        console.error('Error actualizando SRT host:', error);
+        showToast('error', 'Error', error.message || 'No se pudo actualizar la IP');
+    }
+}
+
 function copySRTUrl(port) {
     // Intentar obtener la IP del servidor desde la configuración o usar placeholder
     const serverIP = state.serverIP || 'IP_SERVIDOR';
@@ -558,9 +567,7 @@ function editChannel(channelId) {
     document.getElementById('channelModalTitle').textContent = 'Editar Canal';
     document.getElementById('channelId').value = channel.id;
     document.getElementById('channelLabel').value = channel.label;
-    document.getElementById('channelVideoPath').value = channel.videoPath;
     document.getElementById('channelSRTName').value = channel.srtStreamName;
-    document.getElementById('channelPreviewEnabled').checked = channel.previewEnabled;
     
     openModal('channelModal');
 }
@@ -679,13 +686,6 @@ async function saveSettings() {
             defaultAudioBitrate: document.getElementById('settingsAudioBitrate').value,
             defaultFrameRate: parseInt(document.getElementById('settingsFrameRate').value),
             testPatternPath: document.getElementById('settingsTestPattern').value,
-            previewConfig: {
-                width: parseInt(document.getElementById('settingsPreviewWidth').value),
-                height: parseInt(document.getElementById('settingsPreviewHeight').value),
-                quality: parseInt(document.getElementById('settingsPreviewQuality').value),
-                updateIntervalMs: parseInt(document.getElementById('settingsPreviewInterval').value),
-                enabled: true
-            },
             srtPrefix: document.getElementById('settingsSRTPrefix').value,
             theme: document.getElementById('settingsTheme').value
         };
@@ -713,14 +713,6 @@ function applyConfigToForm() {
     document.getElementById('settingsTestPattern').value = state.config.testPatternPath || '';
     document.getElementById('settingsSRTPrefix').value = state.config.srtPrefix || 'SRT_SERVER_';
     document.getElementById('settingsTheme').value = state.config.theme || 'dark';
-    
-    if (state.config.previewConfig) {
-        document.getElementById('settingsPreviewWidth').value = state.config.previewConfig.width || 320;
-        document.getElementById('settingsPreviewHeight').value = state.config.previewConfig.height || 180;
-        document.getElementById('settingsPreviewQuality').value = state.config.previewConfig.quality || 60;
-        document.getElementById('settingsPreviewInterval').value = state.config.previewConfig.updateIntervalMs || 2000;
-        document.getElementById('previewQualityValue').textContent = (state.config.previewConfig.quality || 60) + '%';
-    }
 }
 
 function closeConfirmModal() {
@@ -837,7 +829,6 @@ function showMockData() {
             videoPath: 'C:\\Videos\\test.mp4',
             srtStreamName: 'SRT_CANAL_1',
             status: 'inactive',
-            previewEnabled: true,
             currentFile: 'C:\\Videos\\test.mp4'
         },
         {
@@ -846,7 +837,6 @@ function showMockData() {
             videoPath: 'C:\\Videos\\demo.mp4',
             srtStreamName: 'SRT_CANAL_2',
             status: 'active',
-            previewEnabled: true,
             currentFile: 'C:\\Videos\\demo.mp4'
         }
     ];
@@ -864,3 +854,5 @@ window.confirmDeleteChannel = confirmDeleteChannel;
 window.selectVideoFile = selectVideoFile;
 window.playTestPattern = playTestPattern;
 window.copySRTUrl = copySRTUrl;
+window.updateVideoSettings = updateVideoSettings;
+window.updateSRTHost = updateSRTHost;
