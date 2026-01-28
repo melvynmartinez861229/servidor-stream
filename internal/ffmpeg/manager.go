@@ -338,6 +338,12 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		"-stats",
 	}
 
+	// Determinar el encoder a usar
+	encoder := config.VideoEncoder
+	if encoder == "" {
+		encoder = "libx264"
+	}
+
 	// Opciones de loop
 	if config.Loop {
 		args = append(args, "-stream_loop", "-1")
@@ -351,17 +357,13 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 	)
 
 	// === Encoder de Video ===
-	encoder := config.VideoEncoder
-	if encoder == "" {
-		encoder = "libx264"
-	}
-
 	args = append(args, "-c:v", encoder)
 
 	// Configuración específica por encoder
 	switch encoder {
 	case "h264_nvenc":
-		// NVIDIA NVENC - Aceleración por hardware
+		// NVIDIA NVENC - Aceleración por hardware (RTX 3060 Ti y similares)
+		// La RTX 3060 Ti puede manejar múltiples sesiones NVENC simultáneas (hasta ~5-8)
 		preset := config.EncoderPreset
 		if preset == "" {
 			preset = "p4" // Balance velocidad/calidad para NVENC
@@ -379,13 +381,16 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		}
 		args = append(args,
 			"-preset", preset,
-			"-tune", "ll", // Low latency
-			"-rc", "cbr", // CBR para streaming
-			"-zerolatency", "1",
+			"-tune", "ll", // Low latency (ultra low latency)
+			"-rc", "cbr", // CBR para streaming estable
+			"-rc-lookahead", "0", // Sin lookahead para baja latencia
 		)
-		if config.EncoderProfile != "" && config.EncoderProfile != "baseline" {
-			args = append(args, "-profile:v", config.EncoderProfile)
+		// Profile
+		profile := config.EncoderProfile
+		if profile == "" {
+			profile = "main"
 		}
+		args = append(args, "-profile:v", profile)
 
 	case "h264_qsv":
 		// Intel QuickSync
@@ -482,7 +487,7 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		args = append(args, "-r", strconv.Itoa(config.FrameRate))
 	}
 
-	// Formato de pixel
+	// Formato de pixel (necesario para compatibilidad con NVENC)
 	args = append(args, "-pix_fmt", "yuv420p")
 
 	// === Audio ===
