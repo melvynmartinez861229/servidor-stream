@@ -30,10 +30,6 @@ export function GetLogs() {
   return window['go']['app']['App']['GetLogs']();
 }
 
-export function GetPreview(arg1) {
-  return window['go']['app']['App']['GetPreview'](arg1);
-}
-
 export function GetVideoFiles(arg1) {
   return window['go']['app']['App']['GetVideoFiles'](arg1);
 }
@@ -60,10 +56,6 @@ export function SelectTestPatternPath() {
 
 export function SelectVideoPath() {
   return window['go']['app']['App']['SelectVideoPath']();
-}
-
-export function SetPreviewEnabled(arg1, arg2) {
-  return window['go']['app']['App']['SetPreviewEnabled'](arg1, arg2);
 }
 
 export function StartChannel(arg1) {

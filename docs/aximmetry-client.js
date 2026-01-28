@@ -1,12 +1,12 @@
 /**
- * Cliente WebSocket para NDI Server Stream
+ * Cliente WebSocket para SRT Server Stream
  * Ejemplo de integración con Aximmetry Composer
  * 
  * Este archivo muestra cómo conectar desde Aximmetry u otros clientes
- * al servidor NDI Stream para controlar la reproducción de videos.
+ * al servidor SRT Stream para controlar la reproducción de videos.
  */
 
-class NDIServerClient {
+class SRTServerClient {
     constructor(serverUrl = 'ws://localhost:8765/ws') {
         this.serverUrl = serverUrl;
         this.ws = null;
@@ -21,7 +21,7 @@ class NDIServerClient {
     }
 
     /**
-     * Conectar al servidor NDI Stream
+     * Conectar al servidor SRT Stream
      * @param {string} clientName - Nombre identificativo del cliente
      * @returns {Promise} - Resuelve cuando la conexión está establecida
      */
@@ -30,25 +30,25 @@ class NDIServerClient {
             this.clientName = clientName;
             const url = `${this.serverUrl}?name=${encodeURIComponent(clientName)}`;
             
-            console.log(`[NDI Client] Conectando a ${url}...`);
+            console.log(`[SRT Client] Conectando a ${url}...`);
             
             this.ws = new WebSocket(url);
             
             this.ws.onopen = () => {
-                console.log('[NDI Client] Conexión establecida');
+                console.log('[SRT Client] Conexión establecida');
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
                 resolve();
             };
             
             this.ws.onclose = (event) => {
-                console.log(`[NDI Client] Conexión cerrada: ${event.code} - ${event.reason}`);
+                console.log(`[SRT Client] Conexión cerrada: ${event.code} - ${event.reason}`);
                 this.isConnected = false;
                 this.handleDisconnect();
             };
             
             this.ws.onerror = (error) => {
-                console.error('[NDI Client] Error de conexión:', error);
+                console.error('[SRT Client] Error de conexión:', error);
                 reject(error);
             };
             
@@ -75,15 +75,15 @@ class NDIServerClient {
     handleDisconnect() {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
-            console.log(`[NDI Client] Intentando reconectar (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+            console.log(`[SRT Client] Intentando reconectar (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
             
             setTimeout(() => {
                 this.connect(this.clientName).catch(err => {
-                    console.error('[NDI Client] Error en reconexión:', err);
+                    console.error('[SRT Client] Error en reconexión:', err);
                 });
             }, this.reconnectDelay);
         } else {
-            console.error('[NDI Client] Máximo de intentos de reconexión alcanzado');
+            console.error('[SRT Client] Máximo de intentos de reconexión alcanzado');
             this.emit('connectionFailed');
         }
     }
@@ -95,7 +95,7 @@ class NDIServerClient {
     handleMessage(data) {
         try {
             const message = JSON.parse(data);
-            console.log('[NDI Client] Mensaje recibido:', message);
+            console.log('[SRT Client] Mensaje recibido:', message);
             
             // Emitir evento según la acción
             this.emit(message.action, message);
@@ -112,7 +112,7 @@ class NDIServerClient {
                 }
             }
         } catch (error) {
-            console.error('[NDI Client] Error parseando mensaje:', error);
+            console.error('[SRT Client] Error parseando mensaje:', error);
         }
     }
 
@@ -174,16 +174,16 @@ class NDIServerClient {
     /**
      * MÉTODO PRINCIPAL: Solicitar reproducción de un video
      * Aximmetry envía la ruta del video que quiere ver
-     * El servidor responde con el nombre del stream NDI
+     * El servidor responde con la URL del stream SRT
      * 
      * @param {string} filePath - Ruta completa del video a reproducir
      * @param {string} [channelId] - ID del canal (opcional, se asigna automáticamente)
-     * @returns {Promise<Object>} - { channelId, ndiStreamName, filePath }
+     * @returns {Promise<Object>} - { channelId, srtUrl, srtPort, filePath }
      * 
      * @example
      * const result = await client.playVideo('C:\\Videos\\intro.mp4');
-     * console.log('Stream NDI disponible:', result.ndiStreamName);
-     * // Usar result.ndiStreamName como fuente NDI en Aximmetry
+     * console.log('Stream SRT disponible:', result.srtUrl);
+     * // Usar result.srtUrl como fuente SRT en Aximmetry
      */
     async playVideo(filePath, channelId = null) {
         const message = {
@@ -289,17 +289,17 @@ class NDIServerClient {
 // =====================================================
 
 // 1. Crear instancia del cliente
-const client = new NDIServerClient('ws://192.168.1.100:8765/ws');
+const client = new SRTServerClient('ws://192.168.1.100:8765/ws');
 
 // 2. Registrar handlers de eventos
 client.on('connected', (data) => {
-    console.log('Conectado al servidor NDI:', data);
+    console.log('Conectado al servidor SRT:', data);
 });
 
 client.on('play_started', (data) => {
     console.log('Video iniciado:', data);
-    console.log('Stream NDI disponible en:', data.ndiStreamName);
-    // ¡Usar data.ndiStreamName como fuente NDI en Aximmetry!
+    console.log('Stream SRT disponible en:', data.srtUrl);
+    // ¡Usar data.srtUrl como fuente SRT en Aximmetry!
 });
 
 client.on('play_stopped', (data) => {
@@ -316,19 +316,20 @@ async function main() {
         // SOLICITAR UN VIDEO - Este es el flujo principal
         // =====================================================
         // Aximmetry envía la ruta del video que quiere ver
-        // El servidor responde con el nombre del stream NDI
+        // El servidor responde con la URL del stream SRT
         
         const result = await client.playVideo('C:\\Videos\\intro.mp4');
         
         console.log('========================================');
         console.log('VIDEO SOLICITADO CORRECTAMENTE');
-        console.log('Stream NDI:', result.ndiStreamName);
+        console.log('Stream SRT URL:', result.srtUrl);
+        console.log('Puerto SRT:', result.srtPort);
         console.log('Archivo:', result.filePath);
         console.log('========================================');
         
         // Ahora en Aximmetry:
-        // 1. Agregar una fuente NDI
-        // 2. Buscar el stream con nombre: result.ndiStreamName
+        // 1. Agregar una fuente SRT
+        // 2. Usar la URL: result.srtUrl (ej: srt://192.168.1.100:9000)
         // 3. El video estará disponible para usar
         
         // =====================================================
@@ -337,7 +338,7 @@ async function main() {
         // Simplemente solicitar otro video en cualquier momento
         
         // await client.playVideo('C:\\Videos\\outro.mp4');
-        // El stream NDI se actualiza automáticamente con el nuevo video
+        // El stream SRT se actualiza automáticamente con el nuevo video
         
         // =====================================================
         // DETENER REPRODUCCIÓN
@@ -365,7 +366,7 @@ async function playlistExample() {
     
     for (const video of videos) {
         const result = await client.playVideo(video);
-        console.log(`Reproduciendo: ${video} -> NDI: ${result.ndiStreamName}`);
+        console.log(`Reproduciendo: ${video} -> SRT: ${result.srtUrl}`);
         
         // Esperar 10 segundos antes del siguiente video
         await new Promise(r => setTimeout(r, 10000));
@@ -375,10 +376,10 @@ async function playlistExample() {
 
 // Exportar para uso en módulos
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = NDIServerClient;
+    module.exports = SRTServerClient;
 }
 
 // Exportar para uso global en navegador
 if (typeof window !== 'undefined') {
-    window.NDIServerClient = NDIServerClient;
+    window.SRTServerClient = SRTServerClient;
 }

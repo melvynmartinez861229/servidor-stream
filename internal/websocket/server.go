@@ -156,7 +156,7 @@ func (s *Server) handleConnection(w http.ResponseWriter, r *http.Request) {
 	welcome := Response{
 		Success: true,
 		Action:  "connected",
-		Message: "Conectado al servidor NDI Stream",
+		Message: "Conectado al servidor SRT Stream",
 		Data: map[string]interface{}{
 			"clientId": clientID,
 			"name":     clientName,

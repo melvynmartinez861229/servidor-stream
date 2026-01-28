@@ -1,7 +1,10 @@
 package channel
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -21,20 +24,17 @@ const (
 
 // Channel representa un canal de video SRT
 type Channel struct {
-	ID                string    `json:"id"`
-	Label             string    `json:"label"`
-	VideoPath         string    `json:"videoPath"`
-	NDIStreamName     string    `json:"ndiStreamName"` // Se mantiene por compatibilidad (nombre del stream)
-	SRTPort           int       `json:"srtPort"`       // Puerto SRT para este canal
-	Status            Status    `json:"status"`
-	PreviewEnabled    bool      `json:"previewEnabled"`
-	CurrentFile       string    `json:"currentFile"`
-	PreviewBase64     string    `json:"previewBase64,omitempty"`
-	LastPreviewUpdate time.Time `json:"lastPreviewUpdate"`
-	CreatedAt         time.Time `json:"createdAt"`
-	UpdatedAt         time.Time `json:"updatedAt"`
-	ErrorMessage      string    `json:"errorMessage,omitempty"`
-	Stats             Stats     `json:"stats"`
+	ID            string    `json:"id"`
+	Label         string    `json:"label"`
+	VideoPath     string    `json:"videoPath"`
+	SRTStreamName string    `json:"srtStreamName"` // Nombre identificador del stream SRT
+	SRTPort       int       `json:"srtPort"`       // Puerto SRT para este canal
+	Status        Status    `json:"status"`
+	CurrentFile   string    `json:"currentFile"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+	ErrorMessage  string    `json:"errorMessage,omitempty"`
+	Stats         Stats     `json:"stats"`
 }
 
 // Stats contiene estadísticas del canal
@@ -48,15 +48,30 @@ type Stats struct {
 
 // Manager gestiona los canales de video
 type Manager struct {
-	channels map[string]*Channel
-	mutex    sync.RWMutex
+	channels    map[string]*Channel
+	mutex       sync.RWMutex
+	persistPath string
 }
 
 // NewManager crea un nuevo gestor de canales
 func NewManager() *Manager {
-	return &Manager{
-		channels: make(map[string]*Channel),
+	// Determinar ruta de persistencia junto al ejecutable (portable)
+	exePath, err := os.Executable()
+	if err != nil {
+		exePath = "."
 	}
+	exeDir := filepath.Dir(exePath)
+	persistPath := filepath.Join(exeDir, "channels.json")
+
+	m := &Manager{
+		channels:    make(map[string]*Channel),
+		persistPath: persistPath,
+	}
+
+	// Cargar canales guardados
+	m.loadFromDisk()
+
+	return m
 }
 
 // getNextSRTPort calcula el siguiente puerto SRT disponible
@@ -77,7 +92,7 @@ func (m *Manager) getNextSRTPort() int {
 }
 
 // Add agrega un nuevo canal (videoPath es opcional - Aximmetry lo envía dinámicamente)
-func (m *Manager) Add(label, videoPath, ndiStreamName string) (*Channel, error) {
+func (m *Manager) Add(label, videoPath, srtStreamName string) (*Channel, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -88,13 +103,13 @@ func (m *Manager) Add(label, videoPath, ndiStreamName string) (*Channel, error) 
 	// videoPath ya no es obligatorio - Aximmetry lo envía vía WebSocket
 
 	// Generar nombre de stream si no se proporciona
-	if ndiStreamName == "" {
-		ndiStreamName = "STREAM_" + label
+	if srtStreamName == "" {
+		srtStreamName = "STREAM_" + label
 	}
 
 	// Verificar que el nombre de stream no esté en uso
 	for _, ch := range m.channels {
-		if ch.NDIStreamName == ndiStreamName {
+		if ch.SRTStreamName == srtStreamName {
 			return nil, errors.New("el nombre de stream ya está en uso")
 		}
 	}
@@ -103,20 +118,22 @@ func (m *Manager) Add(label, videoPath, ndiStreamName string) (*Channel, error) 
 	srtPort := m.getNextSRTPort()
 
 	channel := &Channel{
-		ID:             uuid.New().String(),
-		Label:          label,
-		VideoPath:      videoPath,
-		NDIStreamName:  ndiStreamName,
-		SRTPort:        srtPort,
-		Status:         StatusInactive,
-		PreviewEnabled: true,
-		CurrentFile:    "", // Se llenará cuando Aximmetry solicite un video
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-		Stats:          Stats{},
+		ID:            uuid.New().String(),
+		Label:         label,
+		VideoPath:     videoPath,
+		SRTStreamName: srtStreamName,
+		SRTPort:       srtPort,
+		Status:        StatusInactive,
+		CurrentFile:   "", // Se llenará cuando Aximmetry solicite un video
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		Stats:         Stats{},
 	}
 
 	m.channels[channel.ID] = channel
+
+	// Persistir cambios a disco
+	m.saveToDisk()
 
 	return channel, nil
 }
@@ -131,6 +148,10 @@ func (m *Manager) Remove(channelID string) error {
 	}
 
 	delete(m.channels, channelID)
+
+	// Persistir cambios a disco
+	m.saveToDisk()
+
 	return nil
 }
 
@@ -147,13 +168,13 @@ func (m *Manager) Get(channelID string) (*Channel, error) {
 	return channel, nil
 }
 
-// GetByNDIName obtiene un canal por nombre NDI
-func (m *Manager) GetByNDIName(ndiName string) (*Channel, error) {
+// GetBySRTName obtiene un canal por nombre SRT
+func (m *Manager) GetBySRTName(srtName string) (*Channel, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
 	for _, ch := range m.channels {
-		if ch.NDIStreamName == ndiName {
+		if ch.SRTStreamName == srtName {
 			return ch, nil
 		}
 	}
@@ -190,7 +211,7 @@ func (m *Manager) GetActive() []Channel {
 }
 
 // Update actualiza un canal existente
-func (m *Manager) Update(channelID, label, videoPath, ndiStreamName string) (*Channel, error) {
+func (m *Manager) Update(channelID, label, videoPath, srtStreamName string) (*Channel, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -199,11 +220,11 @@ func (m *Manager) Update(channelID, label, videoPath, ndiStreamName string) (*Ch
 		return nil, errors.New("canal no encontrado")
 	}
 
-	// Verificar nombre NDI único
-	if ndiStreamName != channel.NDIStreamName {
+	// Verificar nombre SRT único
+	if srtStreamName != channel.SRTStreamName {
 		for _, ch := range m.channels {
-			if ch.ID != channelID && ch.NDIStreamName == ndiStreamName {
-				return nil, errors.New("el nombre de stream NDI ya está en uso")
+			if ch.ID != channelID && ch.SRTStreamName == srtStreamName {
+				return nil, errors.New("el nombre de stream SRT ya está en uso")
 			}
 		}
 	}
@@ -214,11 +235,14 @@ func (m *Manager) Update(channelID, label, videoPath, ndiStreamName string) (*Ch
 	if videoPath != "" {
 		channel.VideoPath = videoPath
 	}
-	if ndiStreamName != "" {
-		channel.NDIStreamName = ndiStreamName
+	if srtStreamName != "" {
+		channel.SRTStreamName = srtStreamName
 	}
 
 	channel.UpdatedAt = time.Now()
+
+	// Persistir cambios a disco
+	m.saveToDisk()
 
 	return channel, nil
 }
@@ -251,38 +275,6 @@ func (m *Manager) SetCurrentFile(channelID, filePath string) error {
 
 	channel.CurrentFile = filePath
 	channel.UpdatedAt = time.Now()
-
-	return nil
-}
-
-// SetPreviewEnabled habilita o deshabilita la previsualización
-func (m *Manager) SetPreviewEnabled(channelID string, enabled bool) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	channel, exists := m.channels[channelID]
-	if !exists {
-		return errors.New("canal no encontrado")
-	}
-
-	channel.PreviewEnabled = enabled
-	channel.UpdatedAt = time.Now()
-
-	return nil
-}
-
-// SetPreview actualiza la previsualización de un canal
-func (m *Manager) SetPreview(channelID, previewBase64 string) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	channel, exists := m.channels[channelID]
-	if !exists {
-		return errors.New("canal no encontrado")
-	}
-
-	channel.PreviewBase64 = previewBase64
-	channel.LastPreviewUpdate = time.Now()
 
 	return nil
 }
@@ -342,4 +334,45 @@ func (m *Manager) ActiveCount() int {
 	}
 
 	return count
+}
+
+// saveToDisk guarda los canales a disco
+func (m *Manager) saveToDisk() error {
+	channels := make([]*Channel, 0, len(m.channels))
+	for _, ch := range m.channels {
+		channels = append(channels, ch)
+	}
+
+	data, err := json.MarshalIndent(channels, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(m.persistPath, data, 0644)
+}
+
+// loadFromDisk carga los canales desde disco
+func (m *Manager) loadFromDisk() error {
+	data, err := os.ReadFile(m.persistPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // No hay archivo, es normal en primera ejecución
+		}
+		return err
+	}
+
+	var channels []*Channel
+	if err := json.Unmarshal(data, &channels); err != nil {
+		return err
+	}
+
+	for _, ch := range channels {
+		// Resetear estado volátil al cargar
+		ch.Status = StatusInactive
+		ch.CurrentFile = ""
+		ch.ErrorMessage = ""
+		m.channels[ch.ID] = ch
+	}
+
+	return nil
 }

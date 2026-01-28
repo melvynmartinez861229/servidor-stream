@@ -1,15 +1,15 @@
-# NDI Server Stream
+# SRT Server Stream
 
-Sistema de gestión de streams NDI para producción audiovisual con Go Wails.
+Sistema de gestión de streams SRT para producción audiovisual con Go Wails.
 
-![NDI Server Stream](docs/screenshot.png)
+![SRT Server Stream](docs/screenshot.png)
 
 ## Características
 
-- 🎬 **Gestión de múltiples canales NDI** - Administra varios streams simultáneamente
+- 🎬 **Gestión de múltiples canales SRT** - Administra varios streams simultáneamente
 - 🔌 **WebSocket Server** - Comunicación bidireccional con clientes Aximmetry
 - 👁️ **Previsualizaciones en tiempo real** - Miniaturas de baja calidad para monitoreo
-- ⚡ **Integración FFmpeg** - Generación robusta de streams NDI
+- ⚡ **Integración FFmpeg** - Generación robusta de streams SRT
 - 🔄 **Reinicio automático** - Recuperación ante fallos
 - 🎨 **Interfaz moderna** - UI intuitiva para operación en tiempo real
 
@@ -17,9 +17,9 @@ Sistema de gestión de streams NDI para producción audiovisual con Go Wails.
 
 - **Go** 1.21 o superior
 - **Node.js** 18 o superior
-- **FFmpeg** con soporte NDI (o versión estándar)
+- **FFmpeg** con soporte SRT (versión estándar incluye soporte)
 - **Wails CLI** v2.7+
-- **Windows** 10/11 (recomendado para NDI)
+- **Windows** 10/11
 
 ## Instalación
 
@@ -32,8 +32,8 @@ go install github.com/wailsapp/wails/v2/cmd/wails@latest
 ### 2. Clonar el repositorio
 
 ```bash
-git clone https://github.com/tu-usuario/ndi-server-stream.git
-cd ndi-server-stream
+git clone https://github.com/tu-usuario/srt-server-stream.git
+cd srt-server-stream
 ```
 
 ### 3. Instalar dependencias
@@ -62,24 +62,28 @@ wails build
 
 El ejecutable se generará en `build/bin/`.
 
-## Configuración de FFmpeg con NDI
+## Configuración de FFmpeg con SRT
 
-Para streaming NDI nativo, necesitas FFmpeg compilado con soporte NewTek NDI:
+FFmpeg moderno incluye soporte SRT por defecto. El protocolo SRT (Secure Reliable Transport) ofrece:
 
-### Opción 1: FFmpeg con NDI SDK
-1. Descargar [NDI SDK](https://ndi.tv/sdk/)
-2. Compilar FFmpeg con `--enable-libndi_newtek`
+- Baja latencia para streaming en tiempo real
+- Corrección de errores (ARQ)
+- Encriptación AES
+- Atraviesa firewalls fácilmente
 
-### Opción 2: Usar herramientas NDI externas
-La aplicación puede usar NDI Tools junto con FFmpeg estándar mediante pipes.
+### Verificar soporte SRT
+
+```bash
+ffmpeg -protocols | grep srt
+```
 
 ## Uso
 
 ### Interfaz Principal
 
 1. **Agregar Canal**: Click en "Nuevo" para crear un canal
-2. **Configurar**: Establecer nombre, ruta de video y nombre NDI
-3. **Iniciar Stream**: Click en "Iniciar" para comenzar el streaming
+2. **Configurar**: Establecer nombre y nombre del stream SRT
+3. **Iniciar Stream**: El stream inicia cuando Aximmetry solicita un video
 4. **Monitorear**: Ver previsualizaciones y logs en tiempo real
 
 ### Comunicación WebSocket
@@ -92,6 +96,15 @@ La aplicación expone un servidor WebSocket en el puerto configurado (default: 8
 ```json
 {
   "action": "list_channels"
+}
+```
+
+**Reproducir video (flujo principal):**
+```json
+{
+  "action": "play_video",
+  "filePath": "C:\\Videos\\video.mp4",
+  "channelId": "uuid-del-canal"
 }
 ```
 
@@ -125,12 +138,12 @@ La aplicación expone un servidor WebSocket en el puerto configurado (default: 8
 1. En Aximmetry, crear un módulo de WebSocket cliente
 2. Conectar a `ws://ip-servidor:8765/ws`
 3. Enviar comandos JSON para controlar streams
-4. Recibir streams NDI con el nombre configurado
+4. Recibir streams SRT con la URL: `srt://ip-servidor:puerto`
 
 ## Estructura del Proyecto
 
 ```
-ndi-server-stream/
+srt-server-stream/
 ├── main.go                 # Punto de entrada
 ├── wails.json             # Configuración Wails
 ├── go.mod                 # Dependencias Go
@@ -162,7 +175,7 @@ ndi-server-stream/
 ## Configuración
 
 La configuración se guarda en:
-- **Windows**: `%APPDATA%/ndi-server-stream/config.json`
+- **Windows**: `%APPDATA%/servidor-stream/config.json`
 
 ### Parámetros Configurables
 
@@ -174,6 +187,7 @@ La configuración se guarda en:
 | `defaultVideoBitrate` | Bitrate de video | "10M" |
 | `defaultAudioBitrate` | Bitrate de audio | "192k" |
 | `defaultFrameRate` | Frame rate por defecto | 30 |
+| `srtPrefix` | Prefijo para nombres de stream | "SRT_SERVER_" |
 | `previewConfig.width` | Ancho de previews | 320 |
 | `previewConfig.height` | Alto de previews | 180 |
 | `previewConfig.quality` | Calidad JPEG (%) | 60 |
@@ -215,10 +229,10 @@ wails generate module
 ### FFmpeg no encontrado
 Asegúrate de que FFmpeg está en el PATH o configura la ruta completa en Configuración.
 
-### Stream NDI no visible
-1. Verificar que el receptor NDI está en la misma red
-2. Comprobar firewall de Windows
-3. Usar NDI Studio Monitor para debug
+### Stream SRT no conecta
+1. Verificar que el receptor está apuntando al puerto correcto
+2. Comprobar firewall de Windows (abrir puertos SRT: 9000+)
+3. Verificar que la IP del servidor es accesible
 
 ### Previews no se actualizan
 1. Verificar que el archivo de video existe
@@ -239,7 +253,7 @@ MIT License - ver [LICENSE](LICENSE) para detalles.
 
 ## Contacto
 
-- Crear un [Issue](https://github.com/tu-usuario/ndi-server-stream/issues) para reportar bugs
+- Crear un [Issue](https://github.com/tu-usuario/srt-server-stream/issues) para reportar bugs
 - Pull requests bienvenidos
 
 ---

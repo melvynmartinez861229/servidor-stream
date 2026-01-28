@@ -1,6 +1,6 @@
-# Protocolo WebSocket - NDI Server Stream
+# Protocolo WebSocket - SRT Server Stream
 
-Este documento describe el protocolo de comunicación WebSocket entre el servidor NDI Stream y los clientes (como Aximmetry Composer).
+Este documento describe el protocolo de comunicación WebSocket entre el servidor SRT Stream y los clientes (como Aximmetry Composer).
 
 ## Flujo Principal
 
@@ -8,13 +8,13 @@ El flujo de trabajo típico es:
 
 1. **Aximmetry (cliente)** se conecta al servidor WebSocket
 2. **Aximmetry** envía la ruta del video que quiere reproducir
-3. **NDI Server** recibe la solicitud e inicia FFmpeg con ese video
-4. **NDI Server** responde con el nombre del stream NDI
-5. **Aximmetry** consume el stream NDI usando el nombre proporcionado
+3. **SRT Server** recibe la solicitud e inicia FFmpeg con ese video
+4. **SRT Server** responde con la URL del stream SRT
+5. **Aximmetry** consume el stream SRT usando la URL proporcionada
 
 ```
 ┌─────────────┐                     ┌─────────────┐
-│  Aximmetry  │                     │ NDI Server  │
+│  Aximmetry  │                     │ SRT Server  │
 └──────┬──────┘                     └──────┬──────┘
        │                                   │
        │  1. Conectar WebSocket            │
@@ -23,10 +23,10 @@ El flujo de trabajo típico es:
        │  2. play_video {filePath: "..."}  │
        │──────────────────────────────────>│
        │                                   │
-       │  3. {ndiStreamName: "NDI_XXX"}    │
+       │  3. {srtUrl: "srt://IP:9000"}     │
        │<──────────────────────────────────│
        │                                   │
-       │  4. Recibir stream NDI "NDI_XXX"  │
+       │  4. Recibir stream SRT            │
        │<==================================│
        │                                   │
 ```
@@ -78,7 +78,7 @@ Todos los mensajes son objetos JSON con la siguiente estructura base:
 ### 1. play_video (Acción Principal)
 **Esta es la acción principal que usa Aximmetry para solicitar videos.**
 
-Aximmetry envía la ruta del video que quiere reproducir, el servidor lo procesa y devuelve el nombre del stream NDI.
+Aximmetry envía la ruta del video que quiere reproducir, el servidor lo procesa y devuelve la URL del stream SRT.
 
 **Request:**
 ```json
@@ -99,17 +99,19 @@ Aximmetry envía la ruta del video que quiere reproducir, el servidor lo procesa
   "action": "play_started",
   "data": {
     "channelId": "uuid-asignado",
-    "ndiStreamName": "NDI_SERVER_abc123",
+    "streamName": "SRT_SERVER_abc123",
+    "srtPort": 9000,
+    "srtUrl": "srt://192.168.1.100:9000",
     "filePath": "C:\\Videos\\intro.mp4",
-    "message": "Video disponible en stream NDI: NDI_SERVER_abc123"
+    "message": "Video disponible en: srt://192.168.1.100:9000"
   }
 }
 ```
 
 **Uso en Aximmetry:**
 1. Enviar `play_video` con la ruta del video
-2. Recibir `ndiStreamName` en la respuesta
-3. Usar ese nombre como fuente NDI en Aximmetry
+2. Recibir `srtUrl` en la respuesta
+3. Usar esa URL como fuente SRT en Aximmetry
 
 ### 2. list_channels
 Obtiene la lista de canales configurados.
@@ -131,7 +133,8 @@ Obtiene la lista de canales configurados.
       "id": "uuid-del-canal",
       "label": "Canal Principal",
       "videoPath": "C:\\Videos\\video.mp4",
-      "ndiStreamName": "NDI_CANAL_1",
+      "srtStreamName": "SRT_CANAL_1",
+      "srtPort": 9000,
       "status": "inactive",
       "previewEnabled": true,
       "currentFile": "C:\\Videos\\video.mp4"
@@ -140,7 +143,7 @@ Obtiene la lista de canales configurados.
 }
 ```
 
-### 2. status
+### 3. status
 Obtiene el estado de un canal específico o todos los canales.
 
 **Request (canal específico):**
@@ -167,7 +170,8 @@ Obtiene el estado de un canal específico o todos los canales.
     "id": "uuid-del-canal",
     "label": "Canal Principal",
     "status": "active",
-    "ndiStreamName": "NDI_CANAL_1",
+    "srtStreamName": "SRT_CANAL_1",
+    "srtPort": 9000,
     "currentFile": "C:\\Videos\\video.mp4",
     "stats": {
       "framesProcessed": 1500,
@@ -177,7 +181,7 @@ Obtiene el estado de un canal específico o todos los canales.
 }
 ```
 
-### 3. play
+### 4. play
 Inicia la reproducción de un video en un canal.
 
 **Request:**
@@ -185,7 +189,7 @@ Inicia la reproducción de un video en un canal.
 {
   "action": "play",
   "channelId": "uuid-del-canal",
-  "filePath": "C:\\Videos\\otro-video.mp4"  // Opcional
+  "filePath": "C:\\Videos\\otro-video.mp4"
 }
 ```
 
@@ -196,13 +200,15 @@ Inicia la reproducción de un video en un canal.
   "action": "play_started",
   "data": {
     "channelId": "uuid-del-canal",
-    "ndiStreamName": "NDI_CANAL_1",
+    "streamName": "SRT_CANAL_1",
+    "srtPort": 9000,
+    "srtUrl": "srt://192.168.1.100:9000",
     "filePath": "C:\\Videos\\otro-video.mp4"
   }
 }
 ```
 
-### 4. stop
+### 5. stop
 Detiene la reproducción de un canal.
 
 **Request:**
@@ -224,7 +230,7 @@ Detiene la reproducción de un canal.
 }
 ```
 
-### 5. list_files
+### 6. list_files
 Lista los archivos de video disponibles en el directorio del canal.
 
 **Request:**
@@ -258,7 +264,7 @@ Enviado al conectarse:
 {
   "success": true,
   "action": "connected",
-  "message": "Conectado al servidor NDI Stream",
+  "message": "Conectado al servidor SRT Stream",
   "data": {
     "clientId": "uuid-asignado",
     "name": "Aximmetry_Studio_1"
@@ -275,6 +281,7 @@ Cuando cambia el estado de un canal:
   "data": {
     "channelId": "uuid-del-canal",
     "status": "active",
+    "srtPort": 9000,
     "currentFile": "C:\\Videos\\video.mp4"
   }
 }
@@ -285,7 +292,7 @@ Cuando cambia el estado de un canal:
 | Estado | Descripción |
 |--------|-------------|
 | `inactive` | Canal configurado pero sin stream activo |
-| `active` | Stream NDI activo y transmitiendo |
+| `active` | Stream SRT activo y transmitiendo |
 | `starting` | Iniciando proceso FFmpeg |
 | `stopping` | Deteniendo proceso FFmpeg |
 | `error` | Error en el proceso de streaming |
@@ -297,6 +304,7 @@ Cuando cambia el estado de un canal:
 | `invalid_message` | Mensaje JSON mal formado |
 | `unknown_action` | Acción no reconocida |
 | `channel_not_found` | Canal no existe |
+| `file_not_found` | Archivo de video no encontrado |
 | `play_error` | Error iniciando reproducción |
 | `stop_error` | Error deteniendo reproducción |
 | `list_error` | Error listando archivos |
@@ -310,21 +318,24 @@ ws.connect('ws://192.168.1.100:8765/ws?name=Aximmetry_1');
 // 2. Recibir confirmación de conexión
 // <- { "action": "connected", "data": { "clientId": "abc-123" } }
 
-// 3. Listar canales disponibles
-ws.send({ "action": "list_channels" });
-// <- { "action": "channels_list", "data": [...] }
+// 3. Solicitar reproducción de video (flujo principal)
+ws.send({ "action": "play_video", "filePath": "C:\\Videos\\intro.mp4" });
+// <- { "action": "play_started", "data": { "srtUrl": "srt://192.168.1.100:9000", ... } }
 
-// 4. Iniciar reproducción
-ws.send({ "action": "play", "channelId": "canal-1" });
-// <- { "action": "play_started", "data": { "ndiStreamName": "NDI_CANAL_1" } }
+// 4. El stream SRT está ahora disponible para recibir en Aximmetry
+// Usar la URL "srt://192.168.1.100:9000" como fuente
 
-// 5. El stream NDI está ahora disponible para recibir en Aximmetry
-// Usar el nombre "NDI_CANAL_1" como fuente NDI
-
-// 6. Detener cuando termine
-ws.send({ "action": "stop", "channelId": "canal-1" });
-// <- { "action": "play_stopped", "data": { "channelId": "canal-1" } }
+// 5. Detener cuando termine
+ws.send({ "action": "stop", "channelId": "canal-asignado" });
+// <- { "action": "play_stopped", "data": { "channelId": "canal-asignado" } }
 ```
+
+## Puertos SRT
+
+- Cada canal tiene su propio puerto SRT único
+- El primer canal usa el puerto 9000
+- Los siguientes canales usan puertos incrementales (9001, 9002, etc.)
+- Asegúrese de abrir estos puertos en el firewall
 
 ## Consideraciones de Implementación
 
@@ -346,3 +357,8 @@ ws.send({ "action": "stop", "channelId": "canal-1" });
 - Múltiples clientes pueden conectarse simultáneamente
 - Cada cliente tiene un ID único
 - Los cambios de estado se notifican a todos los clientes
+
+### Latencia SRT
+- El servidor usa latency=200000 (200ms) por defecto
+- Ajustable según las necesidades de la red
+- Menor latencia = menos buffer, más sensible a pérdidas

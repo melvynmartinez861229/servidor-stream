@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-
-	"servidor-stream/internal/preview"
 )
 
 // Config configuración de la aplicación
@@ -23,12 +21,9 @@ type Config struct {
 	// Patrón de prueba
 	TestPatternPath string `json:"testPatternPath"` // Ruta al video patrón para pruebas
 
-	// Previsualizaciones
-	PreviewConfig preview.Config `json:"previewConfig"`
-
-	// NDI
-	NDIPrefix string `json:"ndiPrefix"`
-	NDIGroup  string `json:"ndiGroup"`
+	// SRT
+	SRTPrefix string `json:"srtPrefix"`
+	SRTGroup  string `json:"srtGroup"`
 
 	// Rutas
 	DefaultVideoPath string `json:"defaultVideoPath"`
@@ -112,9 +107,8 @@ func Default() *Config {
 		DefaultAudioBitrate: "192k",
 		DefaultFrameRate:    30,
 		TestPatternPath:     testPatternPath,
-		PreviewConfig:       preview.DefaultConfig(),
-		NDIPrefix:           "NDI_SERVER_",
-		NDIGroup:            "",
+		SRTPrefix:           "SRT_SERVER_",
+		SRTGroup:            "",
 		DefaultVideoPath:    "",
 		LogPath:             "",
 		Theme:               "dark",

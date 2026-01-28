@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	"servidor-stream/internal/channel"
 	"servidor-stream/internal/config"
 	"servidor-stream/internal/ffmpeg"
-	"servidor-stream/internal/preview"
 	"servidor-stream/internal/websocket"
 )
 
@@ -26,7 +26,6 @@ type App struct {
 	channelManager *channel.Manager
 	wsServer       *websocket.Server
 	ffmpegManager  *ffmpeg.Manager
-	previewManager *preview.Manager
 	config         *config.Config
 	logBuffer      []LogEntry
 	logMutex       sync.RWMutex
@@ -65,7 +64,6 @@ func (a *App) Startup(ctx context.Context) {
 	// Inicializar managers
 	a.channelManager = channel.NewManager()
 	a.ffmpegManager = ffmpeg.NewManager(cfg.FFmpegPath, a.onFFmpegEvent)
-	a.previewManager = preview.NewManager(cfg.FFmpegPath, cfg.PreviewConfig)
 
 	// Inicializar servidor WebSocket
 	a.wsServer = websocket.NewServer(cfg.WebSocketPort, a.handleWebSocketMessage)
@@ -74,12 +72,12 @@ func (a *App) Startup(ctx context.Context) {
 	// Iniciar monitor de canales
 	go a.monitorChannels(cancelCtx)
 
-	a.AddLog("INFO", fmt.Sprintf("NDI Server Stream iniciado en puerto WebSocket %d", cfg.WebSocketPort), "")
+	a.AddLog("INFO", fmt.Sprintf("SRT Server Stream iniciado en puerto WebSocket %d", cfg.WebSocketPort), "")
 }
 
 // Shutdown es llamado cuando la aplicación se cierra
 func (a *App) Shutdown(ctx context.Context) {
-	a.AddLog("INFO", "Cerrando NDI Server Stream...", "")
+	a.AddLog("INFO", "Cerrando SRT Server Stream...", "")
 
 	// Cancelar contexto
 	if a.cancelFunc != nil {
@@ -101,7 +99,7 @@ func (a *App) Shutdown(ctx context.Context) {
 		config.Save(a.config)
 	}
 
-	a.AddLog("INFO", "NDI Server Stream cerrado correctamente", "")
+	a.AddLog("INFO", "SRT Server Stream cerrado correctamente", "")
 }
 
 // DomReady es llamado cuando el DOM está listo
@@ -121,8 +119,8 @@ func (a *App) GetChannels() []channel.Channel {
 }
 
 // AddChannel agrega un nuevo canal (sin videoPath - Aximmetry lo envía vía WebSocket)
-func (a *App) AddChannel(label, ndiStreamName string) (*channel.Channel, error) {
-	ch, err := a.channelManager.Add(label, "", ndiStreamName) // videoPath vacío inicialmente
+func (a *App) AddChannel(label, srtStreamName string) (*channel.Channel, error) {
+	ch, err := a.channelManager.Add(label, "", srtStreamName) // videoPath vacío inicialmente
 	if err != nil {
 		a.AddLog("ERROR", fmt.Sprintf("Error agregando canal: %v", err), "")
 		return nil, err
@@ -153,8 +151,8 @@ func (a *App) RemoveChannel(channelID string) error {
 }
 
 // UpdateChannel actualiza la configuración de un canal (sin videoPath)
-func (a *App) UpdateChannel(channelID, label, ndiStreamName string) (*channel.Channel, error) {
-	ch, err := a.channelManager.Update(channelID, label, "", ndiStreamName) // videoPath se mantiene
+func (a *App) UpdateChannel(channelID, label, srtStreamName string) (*channel.Channel, error) {
+	ch, err := a.channelManager.Update(channelID, label, "", srtStreamName) // videoPath se mantiene
 	if err != nil {
 		a.AddLog("ERROR", fmt.Sprintf("Error actualizando canal %s: %v", channelID, err), channelID)
 		return nil, err
@@ -173,11 +171,17 @@ func (a *App) StartChannel(channelID string) error {
 		return err
 	}
 
+	// Usar CurrentFile si VideoPath está vacío (ej: si estaba reproduciendo patrón)
+	inputPath := ch.VideoPath
+	if inputPath == "" && ch.CurrentFile != "" {
+		inputPath = ch.CurrentFile
+	}
+
 	// Configurar y iniciar FFmpeg con SRT
 	ffmpegConfig := ffmpeg.StreamConfig{
 		ChannelID:     ch.ID,
-		InputPath:     ch.VideoPath,
-		NDIStreamName: ch.NDIStreamName,
+		InputPath:     inputPath,
+		SRTStreamName: ch.SRTStreamName,
 		SRTPort:       ch.SRTPort,
 		VideoBitrate:  a.config.DefaultVideoBitrate,
 		AudioBitrate:  a.config.DefaultAudioBitrate,
@@ -200,30 +204,34 @@ func (a *App) StartChannel(channelID string) error {
 		"srtPort":   ch.SRTPort,
 	})
 
-	// Iniciar generación de previsualizaciones
-	if ch.PreviewEnabled {
-		go a.startPreviewGeneration(ch)
-	}
-
 	return nil
 }
 
 // PlayTestPattern reproduce el patrón de prueba en un canal
 func (a *App) PlayTestPattern(channelID string) error {
+	a.AddLog("INFO", fmt.Sprintf("PlayTestPattern llamado para canal: %s", channelID), channelID)
+
 	// Verificar que el patrón está configurado
 	if a.config.TestPatternPath == "" {
+		a.AddLog("ERROR", "Patrón de prueba no configurado", channelID)
 		return fmt.Errorf("patrón de prueba no configurado. Configure la ruta en Ajustes")
 	}
 
+	a.AddLog("INFO", fmt.Sprintf("Patrón configurado: %s", a.config.TestPatternPath), channelID)
+
 	// Verificar que el archivo existe
 	if _, err := os.Stat(a.config.TestPatternPath); os.IsNotExist(err) {
+		a.AddLog("ERROR", fmt.Sprintf("Archivo no encontrado: %s", a.config.TestPatternPath), channelID)
 		return fmt.Errorf("archivo de patrón no encontrado: %s", a.config.TestPatternPath)
 	}
 
 	ch, err := a.channelManager.Get(channelID)
 	if err != nil {
+		a.AddLog("ERROR", fmt.Sprintf("Canal no encontrado: %v", err), channelID)
 		return err
 	}
+
+	a.AddLog("INFO", fmt.Sprintf("Canal encontrado: %s, puerto SRT: %d", ch.Label, ch.SRTPort), channelID)
 
 	// Si el canal está activo, detenerlo primero
 	if ch.Status == channel.StatusActive {
@@ -237,7 +245,7 @@ func (a *App) PlayTestPattern(channelID string) error {
 	ffmpegConfig := ffmpeg.StreamConfig{
 		ChannelID:     ch.ID,
 		InputPath:     a.config.TestPatternPath,
-		NDIStreamName: ch.NDIStreamName,
+		SRTStreamName: ch.SRTStreamName,
 		SRTPort:       ch.SRTPort,
 		VideoBitrate:  a.config.DefaultVideoBitrate,
 		AudioBitrate:  a.config.DefaultAudioBitrate,
@@ -255,18 +263,15 @@ func (a *App) PlayTestPattern(channelID string) error {
 	a.channelManager.SetStatus(channelID, channel.StatusActive)
 	a.AddLog("INFO", fmt.Sprintf("Patrón de prueba iniciado en %s (SRT puerto %d)", ch.Label, ch.SRTPort), channelID)
 
+	// Emitir evento de status ACTIVO al frontend
+	a.AddLog("INFO", fmt.Sprintf("Emitiendo channel:status con status=active para canal %s", channelID), channelID)
 	runtime.EventsEmit(a.ctx, "channel:status", map[string]interface{}{
 		"channelId":     channelID,
-		"status":        channel.StatusActive,
+		"status":        "active", // Usar string directo para asegurar compatibilidad
 		"currentFile":   "[PATRÓN DE PRUEBA]",
 		"srtPort":       ch.SRTPort,
 		"isTestPattern": true,
 	})
-
-	// Iniciar generación de previsualizaciones
-	if ch.PreviewEnabled {
-		go a.startPreviewGeneration(ch)
-	}
 
 	return nil
 }
@@ -321,27 +326,6 @@ func (a *App) ToggleChannel(channelID string) error {
 	return a.StartChannel(channelID)
 }
 
-// SetPreviewEnabled habilita o deshabilita la previsualización de un canal
-func (a *App) SetPreviewEnabled(channelID string, enabled bool) error {
-	err := a.channelManager.SetPreviewEnabled(channelID, enabled)
-	if err != nil {
-		return err
-	}
-
-	runtime.EventsEmit(a.ctx, "channel:updated", nil)
-	return nil
-}
-
-// GetPreview obtiene la previsualización de un canal
-func (a *App) GetPreview(channelID string) (string, error) {
-	ch, err := a.channelManager.Get(channelID)
-	if err != nil {
-		return "", err
-	}
-
-	return ch.PreviewBase64, nil
-}
-
 // GetLogs retorna los logs recientes
 func (a *App) GetLogs() []LogEntry {
 	a.logMutex.RLock()
@@ -373,9 +357,6 @@ func (a *App) UpdateConfig(cfg *config.Config) error {
 		a.AddLog("ERROR", fmt.Sprintf("Error guardando configuración: %v", err), "")
 		return err
 	}
-
-	// Actualizar managers con nueva configuración
-	a.previewManager.UpdateConfig(cfg.PreviewConfig)
 
 	a.AddLog("INFO", "Configuración actualizada", "")
 	return nil
@@ -455,7 +436,7 @@ func (a *App) PlayVideoOnChannel(channelID, videoPath string) error {
 	ffmpegConfig := ffmpeg.StreamConfig{
 		ChannelID:     ch.ID,
 		InputPath:     videoPath,
-		NDIStreamName: ch.NDIStreamName,
+		SRTStreamName: ch.SRTStreamName,
 		SRTPort:       ch.SRTPort,
 		VideoBitrate:  a.config.DefaultVideoBitrate,
 		AudioBitrate:  a.config.DefaultAudioBitrate,
@@ -564,7 +545,7 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 			return websocket.ErrorResponse("channel_not_found", "Canal no encontrado")
 		}
 		channelID = ch.ID
-		streamName = ch.NDIStreamName
+		streamName = ch.SRTStreamName
 		srtPort = ch.SRTPort
 	} else {
 		// Crear o reutilizar un canal para este cliente
@@ -573,7 +554,7 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 		for _, ch := range channels {
 			if ch.Label == "Client_"+clientID {
 				channelID = ch.ID
-				streamName = ch.NDIStreamName
+				streamName = ch.SRTStreamName
 				srtPort = ch.SRTPort
 				break
 			}
@@ -581,14 +562,14 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 
 		// Si no existe, crear uno nuevo para este cliente
 		if channelID == "" {
-			streamName := fmt.Sprintf("%s%s", a.config.NDIPrefix, clientID[:8])
-			ch, err := a.channelManager.Add("Client_"+clientID, msg.FilePath, streamName)
+			newStreamName := fmt.Sprintf("%s%s", a.config.SRTPrefix, clientID[:8])
+			ch, err := a.channelManager.Add("Client_"+clientID, msg.FilePath, newStreamName)
 			if err != nil {
 				a.AddLog("ERROR", fmt.Sprintf("Error creando canal para cliente: %v", err), "")
 				return websocket.ErrorResponse("channel_create_error", err.Error())
 			}
 			channelID = ch.ID
-			streamName = ch.NDIStreamName
+			streamName = ch.SRTStreamName
 			srtPort = ch.SRTPort
 
 			// Notificar al frontend del nuevo canal
@@ -642,7 +623,7 @@ func (a *App) handlePlayRequest(clientID string, msg websocket.Message) []byte {
 
 	return websocket.SuccessResponse("play_started", map[string]interface{}{
 		"channelId":  ch.ID,
-		"streamName": ch.NDIStreamName,
+		"streamName": ch.SRTStreamName,
 		"srtPort":    ch.SRTPort,
 		"srtUrl":     srtURL,
 		"filePath":   videoPath,
@@ -695,19 +676,36 @@ func (a *App) handleListFilesRequest(clientID string, msg websocket.Message) []b
 
 // onFFmpegEvent maneja eventos del gestor FFmpeg
 func (a *App) onFFmpegEvent(event ffmpeg.Event) {
+	var newStatus channel.Status
+
 	switch event.Type {
 	case ffmpeg.EventStarted:
 		a.AddLog("INFO", fmt.Sprintf("FFmpeg iniciado para canal %s", event.ChannelID), event.ChannelID)
+		// No cambiar status aquí - ya se hizo en PlayTestPattern/StartChannel
+		return // No emitir evento duplicado
 	case ffmpeg.EventStopped:
 		a.AddLog("INFO", fmt.Sprintf("FFmpeg detenido para canal %s", event.ChannelID), event.ChannelID)
 		a.channelManager.SetStatus(event.ChannelID, channel.StatusInactive)
+		newStatus = channel.StatusInactive
 	case ffmpeg.EventError:
-		a.AddLog("ERROR", fmt.Sprintf("Error FFmpeg en canal %s: %s", event.ChannelID, event.Message), event.ChannelID)
-		a.channelManager.SetStatus(event.ChannelID, channel.StatusError)
+		// Detectar si es un error de desconexión del cliente SRT (I/O error)
+		isSRTDisconnect := strings.Contains(event.Message, "I/O error") ||
+			strings.Contains(event.Message, "exit status 0xfffffffb") ||
+			strings.Contains(event.Message, "muxing a packet")
 
-		// Intentar reinicio automático si está configurado
-		if a.config.AutoRestart {
-			go a.attemptRestart(event.ChannelID)
+		if isSRTDisconnect {
+			a.AddLog("INFO", fmt.Sprintf("Cliente SRT desconectado del canal %s. Pulse 'Patrón' o 'Iniciar' para reanudar.", event.ChannelID), event.ChannelID)
+			a.channelManager.SetStatus(event.ChannelID, channel.StatusInactive)
+			newStatus = channel.StatusInactive
+		} else {
+			a.AddLog("ERROR", fmt.Sprintf("Error FFmpeg en canal %s: %s", event.ChannelID, event.Message), event.ChannelID)
+			a.channelManager.SetStatus(event.ChannelID, channel.StatusError)
+			newStatus = channel.StatusError
+
+			// Intentar reinicio automático si está configurado
+			if a.config.AutoRestart {
+				go a.attemptRestart(event.ChannelID)
+			}
 		}
 	case ffmpeg.EventProgress:
 		// Actualizar progreso en el canal
@@ -715,62 +713,55 @@ func (a *App) onFFmpegEvent(event ffmpeg.Event) {
 			"channelId": event.ChannelID,
 			"progress":  event.Data,
 		})
+		return // No emitir channel:status para progreso
+	default:
+		return
 	}
 
+	// Emitir channel:status con el status actualizado
 	runtime.EventsEmit(a.ctx, "channel:status", map[string]interface{}{
 		"channelId": event.ChannelID,
+		"status":    newStatus,
 		"event":     event.Type,
 		"message":   event.Message,
 	})
 }
 
 // attemptRestart intenta reiniciar un canal que falló
+// Solo reinicia si hay un archivo para reproducir y no excede el límite de reintentos
 func (a *App) attemptRestart(channelID string) {
-	time.Sleep(5 * time.Second) // Esperar antes de reintentar
+	// No reintentar inmediatamente, usar backoff
+	time.Sleep(10 * time.Second)
 
 	ch, err := a.channelManager.Get(channelID)
 	if err != nil {
 		return
 	}
 
-	if ch.Status == channel.StatusError {
-		a.AddLog("INFO", fmt.Sprintf("Intentando reiniciar canal %s", ch.Label), channelID)
-		a.StartChannel(channelID)
+	// No reiniciar si no está en error o si no hay archivo configurado
+	if ch.Status != channel.StatusError {
+		return
 	}
-}
 
-// startPreviewGeneration inicia la generación de previsualizaciones para un canal
-func (a *App) startPreviewGeneration(ch *channel.Channel) {
-	ticker := time.NewTicker(time.Duration(a.config.PreviewConfig.UpdateIntervalMS) * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-a.ctx.Done():
-			return
-		case <-ticker.C:
-			// Verificar que el canal sigue activo
-			currentCh, err := a.channelManager.Get(ch.ID)
-			if err != nil || currentCh.Status != channel.StatusActive || !currentCh.PreviewEnabled {
-				return
-			}
-
-			// Generar previsualización
-			previewData, err := a.previewManager.GeneratePreview(currentCh.CurrentFile)
-			if err != nil {
-				continue
-			}
-
-			// Actualizar previsualización en el canal
-			a.channelManager.SetPreview(ch.ID, previewData)
-
-			// Emitir evento al frontend
-			runtime.EventsEmit(a.ctx, "channel:preview", map[string]interface{}{
-				"channelId": ch.ID,
-				"preview":   previewData,
-			})
-		}
+	// Verificar que hay un archivo para reproducir
+	inputPath := ch.VideoPath
+	if inputPath == "" {
+		inputPath = ch.CurrentFile
 	}
+
+	if inputPath == "" {
+		a.AddLog("INFO", fmt.Sprintf("Canal %s en error pero sin archivo para reiniciar. Use 'Patrón' o configure un video.", ch.Label), channelID)
+		return
+	}
+
+	// Verificar que el archivo existe antes de reintentar
+	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
+		a.AddLog("ERROR", fmt.Sprintf("Archivo no encontrado para reinicio: %s", inputPath), channelID)
+		return
+	}
+
+	a.AddLog("INFO", fmt.Sprintf("Intentando reiniciar canal %s", ch.Label), channelID)
+	a.StartChannel(channelID)
 }
 
 // getServerIP obtiene la IP local del servidor

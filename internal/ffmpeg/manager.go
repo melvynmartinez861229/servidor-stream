@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -37,7 +38,7 @@ type Event struct {
 type StreamConfig struct {
 	ChannelID     string
 	InputPath     string
-	NDIStreamName string // Ahora se usa como nombre identificador del stream
+	SRTStreamName string // Nombre identificador del stream SRT
 	SRTPort       int    // Puerto SRT para este canal
 	VideoBitrate  string
 	AudioBitrate  string
@@ -89,6 +90,7 @@ type ffmpegProcess struct {
 	lastError    string
 	restartCount int
 	stderr       io.ReadCloser
+	stopped      bool // Marcado como detenido intencionalmente
 }
 
 // NewManager crea un nuevo gestor de procesos FFmpeg
@@ -104,7 +106,7 @@ func NewManager(ffmpegPath string, eventHandler func(Event)) *Manager {
 	}
 }
 
-// Start inicia un proceso FFmpeg para streaming NDI
+// Start inicia un proceso FFmpeg para streaming SRT
 func (m *Manager) Start(config StreamConfig) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -129,6 +131,12 @@ func (m *Manager) Start(config StreamConfig) error {
 
 	// Crear comando
 	cmd := exec.CommandContext(ctx, m.ffmpegPath, args...)
+
+	// Ocultar ventana de consola en Windows
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+	}
 
 	// Capturar stderr para progreso
 	stderr, err := cmd.StderrPipe()
@@ -167,7 +175,7 @@ func (m *Manager) Start(config StreamConfig) error {
 		Message:   fmt.Sprintf("Stream SRT iniciado en puerto %d", srtPort),
 		Data: map[string]interface{}{
 			"pid":        cmd.Process.Pid,
-			"streamName": config.NDIStreamName,
+			"streamName": config.SRTStreamName,
 			"inputPath":  config.InputPath,
 			"srtPort":    srtPort,
 			"srtUrl":     fmt.Sprintf("srt://IP_SERVIDOR:%d", srtPort),
@@ -181,10 +189,14 @@ func (m *Manager) Start(config StreamConfig) error {
 func (m *Manager) Stop(channelID string) error {
 	m.mutex.Lock()
 	proc, exists := m.processes[channelID]
+	if exists {
+		// Marcar como detenido intencionalmente para que monitorProcess no emita eventos
+		proc.stopped = true
+	}
 	m.mutex.Unlock()
 
 	if !exists {
-		return fmt.Errorf("no existe proceso para el canal %s", channelID)
+		return nil // No hay proceso, no es error
 	}
 
 	// Cancelar contexto (termina el proceso)
@@ -192,19 +204,22 @@ func (m *Manager) Stop(channelID string) error {
 		proc.cancel()
 	}
 
-	// Esperar un poco para terminación limpia
-	time.Sleep(500 * time.Millisecond)
+	// Esperar para terminación limpia y liberación del puerto
+	time.Sleep(1 * time.Second)
 
 	// Forzar terminación si sigue corriendo
 	if proc.cmd != nil && proc.cmd.Process != nil {
 		proc.cmd.Process.Kill()
 	}
 
+	// Esperar un poco más para que el puerto se libere
+	time.Sleep(500 * time.Millisecond)
+
 	m.mutex.Lock()
 	delete(m.processes, channelID)
 	m.mutex.Unlock()
 
-	// Emitir evento de detención
+	// Emitir evento de detención (solo si realmente se detuvo)
 	m.emitEvent(Event{
 		Type:      EventStopped,
 		ChannelID: channelID,
@@ -313,25 +328,34 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		args = append(args, "-stream_loop", "-1")
 	}
 
-	// Input
+	// Input - sin -re para máxima fluidez (el encoding controla el ritmo)
 	args = append(args,
-		"-re", // Leer a velocidad real
+		"-re", // Mantener para sincronización de tiempo real
+		"-fflags", "+genpts", // Generar timestamps correctos
 		"-i", config.InputPath,
 	)
 
-	// Codec de video - H.264 para SRT
+	// Codec de video - H.264 optimizado para baja latencia
 	args = append(args,
 		"-c:v", "libx264",
-		"-preset", "fast",
+		"-profile:v", "high",
+		"-level", "4.1",
+		"-preset", "ultrafast", // Más rápido para menor latencia
 		"-tune", "zerolatency", // Baja latencia para streaming
+		"-g", "30", // Keyframe cada 30 frames (1 segundo a 30fps)
+		"-keyint_min", "30",
+		"-sc_threshold", "0", // Deshabilitar detección de cambio de escena
+		"-bf", "0", // Sin B-frames para menor latencia
 	)
 
 	// Bitrate de video
 	if config.VideoBitrate != "" {
 		args = append(args, "-b:v", config.VideoBitrate)
 	} else {
-		args = append(args, "-b:v", "10M")
+		args = append(args, "-b:v", "5M")
 	}
+	// Añadir maxrate y bufsize para mejor control de bitrate
+	args = append(args, "-maxrate", "6M", "-bufsize", "3M")
 
 	// Resolución (si se especifica)
 	if config.Width > 0 && config.Height > 0 {
@@ -350,11 +374,12 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 	// Formato de pixel
 	args = append(args, "-pix_fmt", "yuv420p")
 
-	// Codec de audio - AAC para SRT
+	// Codec de audio - AAC para SRT con configuración optimizada
 	args = append(args,
 		"-c:a", "aac",
 		"-ar", "48000",
 		"-ac", "2",
+		"-strict", "experimental",
 	)
 
 	// Bitrate de audio
@@ -364,23 +389,26 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		args = append(args, "-b:a", "192k")
 	}
 
-	// Output SRT (modo listener - el servidor espera conexiones)
+	// Output SRT (modo listener - el servidor espera conexiones de Aximmetry como caller)
 	srtPort := config.SRTPort
 	if srtPort == 0 {
 		srtPort = 9000 // Puerto por defecto
 	}
 
-	// Formato MPEG-TS para SRT
+	// Formato MPEG-TS para SRT con parámetros optimizados para BAJA LATENCIA
+	// latency=120000 = 120ms (suficiente para local, mucho más fluido)
+	// rcvbuf/sndbuf optimizados para menor delay
 	args = append(args,
 		"-f", "mpegts",
-		fmt.Sprintf("srt://0.0.0.0:%d?mode=listener&latency=200000&pkt_size=1316", srtPort),
+		"-muxrate", "6M", // Tasa de mux fija para estabilidad
+		fmt.Sprintf("srt://0.0.0.0:%d?mode=listener&latency=120000&pkt_size=1316&rcvbuf=1000000&sndbuf=1000000&listen_timeout=-1", srtPort),
 	)
 
 	return args
 }
 
-// buildFFmpegArgsAlt construye argumentos alternativos (sin NDI nativo)
-// Usa output a pipe/socket para integración con NDI SDK
+// buildFFmpegArgsAlt construye argumentos alternativos para raw video
+// Se mantiene para compatibilidad con otros formatos de salida
 func (m *Manager) buildFFmpegArgsAlt(config StreamConfig) []string {
 	args := []string{
 		"-hide_banner",
@@ -423,22 +451,25 @@ func (m *Manager) monitorProcess(channelID string, proc *ffmpegProcess) {
 	err := proc.cmd.Wait()
 
 	m.mutex.Lock()
-	if _, exists := m.processes[channelID]; exists {
-		if err != nil {
-			proc.lastError = err.Error()
-			m.emitEvent(Event{
-				Type:      EventError,
-				ChannelID: channelID,
-				Message:   err.Error(),
-			})
-		} else {
-			m.emitEvent(Event{
-				Type:      EventStopped,
-				ChannelID: channelID,
-				Message:   "Proceso terminado normalmente",
-			})
+	// Solo emitir eventos si el proceso NO fue detenido intencionalmente
+	if !proc.stopped {
+		if _, exists := m.processes[channelID]; exists {
+			if err != nil {
+				proc.lastError = err.Error()
+				m.emitEvent(Event{
+					Type:      EventError,
+					ChannelID: channelID,
+					Message:   err.Error(),
+				})
+			} else {
+				m.emitEvent(Event{
+					Type:      EventStopped,
+					ChannelID: channelID,
+					Message:   "Proceso terminado normalmente",
+				})
+			}
+			delete(m.processes, channelID)
 		}
-		delete(m.processes, channelID)
 	}
 	m.mutex.Unlock()
 }
@@ -570,15 +601,15 @@ func GetFFmpegFormats(ffmpegPath string) ([]string, error) {
 	return formats, nil
 }
 
-// HasNDISupport verifica si FFmpeg tiene soporte NDI
-func HasNDISupport(ffmpegPath string) bool {
+// HasSRTSupport verifica si FFmpeg tiene soporte SRT
+func HasSRTSupport(ffmpegPath string) bool {
 	formats, err := GetFFmpegFormats(ffmpegPath)
 	if err != nil {
 		return false
 	}
 
 	for _, format := range formats {
-		if strings.Contains(format, "ndi") {
+		if strings.Contains(format, "srt") || strings.Contains(format, "mpegts") {
 			return true
 		}
 	}

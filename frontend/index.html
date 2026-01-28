@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NDI Server Stream</title>
+    <title>SRT Server Stream</title>
     <link rel="stylesheet" href="/src/styles/main.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
@@ -14,7 +14,7 @@
             <div class="header-left">
                 <div class="logo">
                     <i class="fas fa-broadcast-tower"></i>
-                    <h1>SPRINT GAMING - NDI Server Stream</h1>
+                    <h1>SPRINT GAMING - Server Stream</h1>
                 </div>
             </div>
             <div class="header-center">
@@ -77,13 +77,13 @@
                     <div class="welcome-icon">
                         <i class="fas fa-broadcast-tower"></i>
                     </div>
-                    <h1>NDI Server Stream</h1>
+                    <h1>Server Stream</h1>
                     <h2>Sprint Gaming</h2>
-                    <p>Sistema de gestión de streams NDI para producción audiovisual</p>
+                    <p>Sistema de gestión de streams para producción audiovisual</p>
                     <div class="welcome-features">
                         <div class="feature">
                             <i class="fas fa-video"></i>
-                            <span>Gestión de múltiples canales NDI</span>
+                            <span>Gestión de múltiples canales</span>
                         </div>
                         <div class="feature">
                             <i class="fas fa-network-wired"></i>
@@ -149,8 +149,8 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="channelNDIName">Nombre del Stream NDI</label>
-                            <input type="text" id="channelNDIName" placeholder="Ej: NDI_CANAL_1">
+                            <label for="channelSRTName">Nombre del Stream SRT</label>
+                            <input type="text" id="channelSRTName" placeholder="Ej: SRT_CANAL_1">
                             <small class="form-help">Nombre con el que Aximmetry recibirá el stream (auto-generado si se deja vacío)</small>
                         </div>
 
@@ -275,8 +275,8 @@
                             <input type="number" id="settingsWSPort" value="8765">
                         </div>
                         <div class="form-group">
-                            <label for="settingsNDIPrefix">Prefijo NDI</label>
-                            <input type="text" id="settingsNDIPrefix" value="NDI_SERVER_">
+                            <label for="settingsSRTPrefix">Prefijo SRT</label>
+                            <input type="text" id="settingsSRTPrefix" value="SRT_SERVER_">
                         </div>
                         <div class="info-box">
                             <i class="fas fa-info-circle"></i>

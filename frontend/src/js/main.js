@@ -1,5 +1,5 @@
 /**
- * NDI Server Stream - JavaScript Principal
+ * SRT Server Stream - JavaScript Principal
  * Gestión de la interfaz de usuario y comunicación con el backend Wails
  */
 
@@ -15,7 +15,7 @@ const state = {
 
 // ==================== Inicialización ====================
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('NDI Server Stream - Inicializando...');
+    console.log('SRT Server Stream - Inicializando...');
     
     // Configurar eventos de UI
     setupEventListeners();
@@ -91,11 +91,17 @@ async function loadLogs() {
 function setupWailsEvents() {
     // Canal agregado
     window.runtime.EventsOn('channel:added', (channel) => {
+        console.log('[EVENT] channel:added', channel?.id, 'status:', channel?.status);
         const existing = state.channels.findIndex(c => c.id === channel.id);
         if (existing === -1) {
             state.channels.push(channel);
         } else {
+            // Preservar el status actual si el nuevo no está definido o es diferente
+            const currentStatus = state.channels[existing].status;
             state.channels[existing] = channel;
+            if (!channel.status && currentStatus) {
+                state.channels[existing].status = currentStatus;
+            }
         }
         renderChannelList();
         renderChannelGrid();
@@ -104,6 +110,7 @@ function setupWailsEvents() {
     
     // Canal eliminado
     window.runtime.EventsOn('channel:removed', (channelId) => {
+        console.log('[EVENT] channel:removed', channelId);
         state.channels = state.channels.filter(c => c.id !== channelId);
         renderChannelList();
         renderChannelGrid();
@@ -112,46 +119,52 @@ function setupWailsEvents() {
     
     // Canal actualizado
     window.runtime.EventsOn('channel:updated', (channel) => {
+        console.log('[EVENT] channel:updated', channel?.id, 'status:', channel?.status);
+        if (!channel) return; // Ignorar si es null
         const index = state.channels.findIndex(c => c.id === channel.id);
         if (index !== -1) {
+            // Preservar status actual si el canal viene con status inactivo pero el stream sigue
+            const currentStatus = state.channels[index].status;
+            const currentPreview = state.channels[index].previewBase64;
             state.channels[index] = channel;
+            // Preservar preview
+            if (currentPreview && !channel.previewBase64) {
+                state.channels[index].previewBase64 = currentPreview;
+            }
             renderChannelList();
-            renderChannelGrid();
+            // No hacer renderChannelGrid completo - solo actualizar status
+            updateChannelCardStatus(channel.id, state.channels[index]);
         }
     });
     
     // Estado del canal
     window.runtime.EventsOn('channel:status', (data) => {
+        console.log('[EVENT] channel:status', data?.channelId, 'status:', data?.status, 'event:', data?.event);
         const index = state.channels.findIndex(c => c.id === data.channelId);
         if (index !== -1) {
-            state.channels[index].status = data.status;
+            // Solo actualizar status si viene definido en el evento
+            if (data.status !== undefined && data.status !== null && data.status !== '') {
+                state.channels[index].status = data.status;
+            }
             if (data.currentFile) {
                 state.channels[index].currentFile = data.currentFile;
             }
+            // Actualizar solo los elementos que cambiaron, no todo el grid
+            updateChannelCardStatus(data.channelId, state.channels[index]);
             renderChannelList();
-            renderChannelGrid();
-        }
-    });
-    
-    // Previsualización del canal
-    window.runtime.EventsOn('channel:preview', (data) => {
-        const card = document.querySelector(`[data-channel-id="${data.channelId}"] .preview-image`);
-        if (card && data.preview) {
-            card.src = data.preview;
-            card.style.display = 'block';
-            card.parentElement.querySelector('.no-preview')?.classList.add('hidden');
         }
     });
     
     // Progreso del canal
     window.runtime.EventsOn('channel:progress', (data) => {
-        const statsEl = document.querySelector(`[data-channel-id="${data.channelId}"] .preview-stats`);
-        if (statsEl && data.progress) {
-            statsEl.innerHTML = `
-                <span><i class="fas fa-film"></i> ${data.progress.frame || 0}</span>
-                <span><i class="fas fa-tachometer-alt"></i> ${data.progress.fps?.toFixed(1) || 0} fps</span>
-                <span><i class="fas fa-clock"></i> ${data.progress.time || '00:00:00'}</span>
-            `;
+        const statsRow = document.querySelector(`[data-channel-id="${data.channelId}"] .channel-stats-row`);
+        if (statsRow && data.progress) {
+            const framesEl = statsRow.querySelector('.stat-frames');
+            const fpsEl = statsRow.querySelector('.stat-fps');
+            const timeEl = statsRow.querySelector('.stat-time');
+            if (framesEl) framesEl.textContent = data.progress.frame || 0;
+            if (fpsEl) fpsEl.textContent = `${data.progress.fps?.toFixed(1) || 0} fps`;
+            if (timeEl) timeEl.textContent = data.progress.time || '00:00:00';
         }
     });
     
@@ -273,7 +286,7 @@ function renderChannelList() {
             <span class="status-dot ${channel.status}"></span>
             <div class="channel-info">
                 <div class="channel-name">${escapeHtml(channel.label)}</div>
-                <div class="channel-ndi">${escapeHtml(channel.ndiStreamName)}</div>
+                <div class="channel-srt">${escapeHtml(channel.srtStreamName)}</div>
             </div>
         `;
         
@@ -291,7 +304,7 @@ function renderChannelGrid() {
     }
     
     container.innerHTML = state.channels.map(channel => `
-        <div class="channel-card" data-channel-id="${channel.id}">
+        <div class="channel-card compact" data-channel-id="${channel.id}">
             <div class="channel-card-header">
                 <div class="channel-card-title">
                     <span class="status-indicator ${channel.status}"></span>
@@ -306,24 +319,14 @@ function renderChannelGrid() {
                     </button>
                 </div>
             </div>
-            <div class="channel-card-preview">
-                ${channel.previewBase64 
-                    ? `<img src="${channel.previewBase64}" class="preview-image" alt="Preview">`
-                    : `<div class="no-preview">
-                        <i class="fas fa-satellite-dish"></i>
-                        <span>Esperando solicitud de Aximmetry...</span>
-                       </div>`
-                }
-                <div class="preview-overlay">
-                    <div class="preview-stats">
-                        <span><i class="fas fa-film"></i> 0</span>
-                        <span><i class="fas fa-tachometer-alt"></i> 0 fps</span>
-                    </div>
-                </div>
-            </div>
             <div class="channel-card-body">
+                <div class="channel-stats-row">
+                    <span class="stat"><i class="fas fa-film"></i> <span class="stat-frames">0</span></span>
+                    <span class="stat"><i class="fas fa-tachometer-alt"></i> <span class="stat-fps">0</span> fps</span>
+                    <span class="stat"><i class="fas fa-clock"></i> <span class="stat-time">00:00:00</span></span>
+                </div>
                 <div class="channel-info-row">
-                    <span class="label">SRT Puerto</span>
+                    <span class="label">Puerto SRT</span>
                     <span class="value srt-port">${channel.srtPort || 9000}</span>
                 </div>
                 <div class="channel-info-row">
@@ -331,30 +334,74 @@ function renderChannelGrid() {
                     <span class="value status-${channel.status}">${getStatusText(channel.status)}</span>
                 </div>
                 <div class="channel-info-row">
-                    <span class="label">Reproduciendo</span>
-                    <span class="value" title="${escapeHtml(channel.currentFile || 'Ninguno')}">
-                        ${channel.currentFile ? escapeHtml(getFileName(channel.currentFile)) : '<em>Esperando video...</em>'}
+                    <span class="label">Archivo</span>
+                    <span class="value file-name" title="${escapeHtml(channel.currentFile || 'Ninguno')}">
+                        ${channel.currentFile ? escapeHtml(getFileName(channel.currentFile)) : '<em>Sin archivo</em>'}
                     </span>
                 </div>
             </div>
             <div class="channel-card-footer">
-                <button class="btn btn-warning btn-sm" onclick="playTestPattern('${channel.id}')" title="Emitir patrón de prueba">
-                    <i class="fas fa-broadcast-tower"></i> Patrón
-                </button>
                 ${channel.status === 'active' 
-                    ? `<button class="btn btn-danger btn-sm" onclick="stopChannel('${channel.id}')">
+                    ? `<button class="btn btn-danger btn-sm" onclick="stopChannel('${channel.id}')" title="Detener">
                         <i class="fas fa-stop"></i> Detener
                        </button>`
-                    : `<button class="btn btn-outline btn-sm" disabled title="Aximmetry inicia la reproducción">
-                        <i class="fas fa-satellite-dish"></i> Listo
+                    : `<button class="btn btn-warning btn-sm" onclick="playTestPattern('${channel.id}')" title="Iniciar patrón">
+                        <i class="fas fa-play"></i> Patrón
                        </button>`
                 }
                 <button class="btn btn-outline btn-sm" onclick="copySRTUrl('${channel.srtPort || 9000}')" title="Copiar URL SRT">
-                    <i class="fas fa-copy"></i> SRT
+                    <i class="fas fa-link"></i> URL
                 </button>
             </div>
         </div>
     `).join('');
+}
+
+// Actualizar solo el estado de una tarjeta sin reconstruir todo el grid
+function updateChannelCardStatus(channelId, channel) {
+    const card = document.querySelector(`[data-channel-id="${channelId}"]`);
+    if (!card) return;
+    
+    // Actualizar indicador de estado (LED)
+    const indicator = card.querySelector('.status-indicator');
+    if (indicator) {
+        indicator.className = `status-indicator ${channel.status}`;
+    }
+    
+    // Actualizar texto de estado (segunda fila de info)
+    const statusText = card.querySelector('.value.status-active, .value.status-inactive, .value.status-error');
+    if (statusText) {
+        statusText.className = `value status-${channel.status}`;
+        statusText.textContent = getStatusText(channel.status);
+    }
+    
+    // Actualizar archivo actual
+    const fileNameEl = card.querySelector('.file-name');
+    if (fileNameEl) {
+        fileNameEl.title = channel.currentFile || 'Ninguno';
+        fileNameEl.innerHTML = channel.currentFile 
+            ? escapeHtml(getFileName(channel.currentFile)) 
+            : '<em>Sin archivo</em>';
+    }
+    
+    // Actualizar botón Patrón/Detener
+    const footer = card.querySelector('.channel-card-footer');
+    if (footer) {
+        const firstBtn = footer.querySelector('button:first-child');
+        if (firstBtn) {
+            if (channel.status === 'active') {
+                firstBtn.className = 'btn btn-danger btn-sm';
+                firstBtn.title = 'Detener';
+                firstBtn.onclick = () => stopChannel(channelId);
+                firstBtn.innerHTML = '<i class="fas fa-stop"></i> Detener';
+            } else {
+                firstBtn.className = 'btn btn-warning btn-sm';
+                firstBtn.title = 'Iniciar patrón';
+                firstBtn.onclick = () => playTestPattern(channelId);
+                firstBtn.innerHTML = '<i class="fas fa-play"></i> Patrón';
+            }
+        }
+    }
 }
 
 function renderLogs() {
@@ -401,7 +448,7 @@ function selectChannel(channelId) {
 async function startChannel(channelId) {
     try {
         await window.go.app.App.StartChannel(channelId);
-        showToast('success', 'Canal iniciado', 'El stream NDI ha comenzado');
+        showToast('success', 'Canal iniciado', 'El stream SRT ha comenzado');
     } catch (error) {
         console.error('Error iniciando canal:', error);
         showToast('error', 'Error', error.message || 'No se pudo iniciar el canal');
@@ -460,7 +507,7 @@ function editChannel(channelId) {
     document.getElementById('channelId').value = channel.id;
     document.getElementById('channelLabel').value = channel.label;
     document.getElementById('channelVideoPath').value = channel.videoPath;
-    document.getElementById('channelNDIName').value = channel.ndiStreamName;
+    document.getElementById('channelSRTName').value = channel.srtStreamName;
     document.getElementById('channelPreviewEnabled').checked = channel.previewEnabled;
     
     openModal('channelModal');
@@ -521,7 +568,7 @@ function closeChannelModal() {
 async function saveChannel() {
     const id = document.getElementById('channelId').value;
     const label = document.getElementById('channelLabel').value.trim();
-    const ndiStreamName = document.getElementById('channelNDIName').value.trim();
+    const srtStreamName = document.getElementById('channelSRTName').value.trim();
     
     if (!label) {
         showToast('warning', 'Campo requerido', 'Ingrese un nombre para el canal');
@@ -531,11 +578,11 @@ async function saveChannel() {
     try {
         if (id) {
             // Actualizar canal existente
-            await window.go.app.App.UpdateChannel(id, label, ndiStreamName);
+            await window.go.app.App.UpdateChannel(id, label, srtStreamName);
             showToast('success', 'Canal actualizado', `${label} ha sido actualizado`);
         } else {
             // Crear nuevo canal
-            await window.go.app.App.AddChannel(label, ndiStreamName);
+            await window.go.app.App.AddChannel(label, srtStreamName);
             showToast('success', 'Canal creado', `${label} ha sido agregado`);
         }
         closeChannelModal();
@@ -587,7 +634,7 @@ async function saveSettings() {
                 updateIntervalMs: parseInt(document.getElementById('settingsPreviewInterval').value),
                 enabled: true
             },
-            ndiPrefix: document.getElementById('settingsNDIPrefix').value,
+            srtPrefix: document.getElementById('settingsSRTPrefix').value,
             theme: document.getElementById('settingsTheme').value
         };
         
@@ -612,7 +659,7 @@ function applyConfigToForm() {
     document.getElementById('settingsAudioBitrate').value = state.config.defaultAudioBitrate || '192k';
     document.getElementById('settingsFrameRate').value = state.config.defaultFrameRate || 30;
     document.getElementById('settingsTestPattern').value = state.config.testPatternPath || '';
-    document.getElementById('settingsNDIPrefix').value = state.config.ndiPrefix || 'NDI_SERVER_';
+    document.getElementById('settingsSRTPrefix').value = state.config.srtPrefix || 'SRT_SERVER_';
     document.getElementById('settingsTheme').value = state.config.theme || 'dark';
     
     if (state.config.previewConfig) {
@@ -736,7 +783,7 @@ function showMockData() {
             id: 'test-1',
             label: 'Canal Principal',
             videoPath: 'C:\\Videos\\test.mp4',
-            ndiStreamName: 'NDI_CANAL_1',
+            srtStreamName: 'SRT_CANAL_1',
             status: 'inactive',
             previewEnabled: true,
             currentFile: 'C:\\Videos\\test.mp4'
@@ -745,7 +792,7 @@ function showMockData() {
             id: 'test-2',
             label: 'Canal Secundario',
             videoPath: 'C:\\Videos\\demo.mp4',
-            ndiStreamName: 'NDI_CANAL_2',
+            srtStreamName: 'SRT_CANAL_2',
             status: 'active',
             previewEnabled: true,
             currentFile: 'C:\\Videos\\demo.mp4'
@@ -763,3 +810,5 @@ window.stopChannel = stopChannel;
 window.editChannel = editChannel;
 window.confirmDeleteChannel = confirmDeleteChannel;
 window.selectVideoFile = selectVideoFile;
+window.playTestPattern = playTestPattern;
+window.copySRTUrl = copySRTUrl;
