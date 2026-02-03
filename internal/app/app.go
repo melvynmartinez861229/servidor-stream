@@ -783,7 +783,7 @@ func (a *App) handlePlayRequest(clientID string, msg websocket.Message) []byte {
 	if videoPath == "" {
 		videoPath = ch.VideoPath
 	}
-	
+
 	if videoPath == "" {
 		a.AddLog("ERROR", "No se especificó filePath y el canal no tiene video asignado", ch.ID)
 		return websocket.ErrorResponse("missing_file_path", "Se requiere especificar filePath porque el canal no tiene video asignado")
@@ -821,14 +821,14 @@ func (a *App) handleStopRequest(clientID string, msg websocket.Message) []byte {
 			return websocket.ErrorResponse("channel_not_found", fmt.Sprintf("Canal '%s' no encontrado", msg.ChannelID))
 		}
 	}
-	
+
 	err = a.StopChannel(ch.ID)
 	if err != nil {
 		return websocket.ErrorResponse("stop_error", err.Error())
 	}
 
 	return websocket.SuccessResponse("play_stopped", map[string]interface{}{
-		"channelId": ch.ID,
+		"channelId":    ch.ID,
 		"channelLabel": ch.Label,
 	})
 }
