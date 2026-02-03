@@ -240,7 +240,7 @@
                             <div class="form-group">
                                 <label for="settingsEncoderPreset">Preset</label>
                                 <select id="settingsEncoderPreset">
-                                    <option value="ultrafast">Ultrafast (más rápido)</option>
+                                    <option value="ultrafast" selected>Ultrafast (más rápido)</option>
                                     <option value="veryfast">Veryfast (recomendado)</option>
                                     <option value="fast">Fast</option>
                                     <option value="medium">Medium (mejor calidad)</option>
@@ -249,7 +249,7 @@
                             <div class="form-group">
                                 <label for="settingsEncoderProfile">Perfil</label>
                                 <select id="settingsEncoderProfile">
-                                    <option value="baseline">Baseline (menor latencia)</option>
+                                    <option value="baseline" selected>Baseline (menor latencia)</option>
                                     <option value="main">Main (recomendado)</option>
                                     <option value="high">High (mejor calidad)</option>
                                 </select>
@@ -267,8 +267,8 @@
                             </div>
                             <div class="form-group">
                                 <label for="settingsGopSize">GOP Size (keyframes)</label>
-                                <input type="number" id="settingsGopSize" value="50" min="1" max="300">
-                                <small class="form-hint">Frames entre keyframes (ej: 50 = 2seg a 25fps)</small>
+                                <input type="number" id="settingsGopSize" value="15" min="1" max="300">
+                                <small class="form-hint">Frames entre keyframes (ej: 15 = 0.5seg a 30fps, menor = baja latencia)</small>
                             </div>
                         </div>
                         <div class="form-group">
@@ -309,8 +309,8 @@
                             </div>
                             <div class="form-group">
                                 <label for="settingsBufferSize">Buffer Size</label>
-                                <input type="text" id="settingsBufferSize" value="5M">
-                                <small class="form-hint">Igual al bitrate para CBR</small>
+                                <input type="text" id="settingsBufferSize" value="2M">
+                                <small class="form-hint">2M para baja latencia, 5M para CBR estándar</small>
                             </div>
                         </div>
                         <div class="form-group">
@@ -336,17 +336,17 @@
                         </div>
                         <div class="form-group">
                             <label for="settingsSRTLatency">Latencia SRT (ms)</label>
-                            <input type="number" id="settingsSRTLatency" value="500" min="20" max="8000" step="50">
-                            <small class="form-hint">120ms = baja latencia, 500ms = estable, 1000ms+ = muy estable</small>
+                            <input type="number" id="settingsSRTLatency" value="120" min="20" max="8000" step="10">
+                            <small class="form-hint">120ms = ultra baja latencia (LAN), 500ms = estable, 1000ms+ = muy estable</small>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="settingsSRTRecvBuffer">Buffer Recepción (MB)</label>
-                                <input type="number" id="settingsSRTRecvBuffer" value="8" min="1" max="64">
+                                <input type="number" id="settingsSRTRecvBuffer" value="2" min="1" max="64">
                             </div>
                             <div class="form-group">
                                 <label for="settingsSRTSendBuffer">Buffer Envío (MB)</label>
-                                <input type="number" id="settingsSRTSendBuffer" value="8" min="1" max="64">
+                                <input type="number" id="settingsSRTSendBuffer" value="2" min="1" max="64">
                             </div>
                         </div>
                         <div class="form-row">
@@ -362,7 +362,7 @@
                         </div>
                         <div class="info-box info-box-green">
                             <i class="fas fa-check-circle"></i>
-                            <p><strong>Para "Cannot keep latency":</strong> Aumenta la latencia a 500-1000ms y los buffers a 8-16MB</p>
+                            <p><strong>Configuración actual:</strong> Ultra baja latencia (120ms, 2MB buffers). Si tienes problemas "Cannot keep latency", aumenta a 500ms y 8MB</p>
                         </div>
                     </div>
 

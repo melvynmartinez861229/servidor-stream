@@ -137,22 +137,22 @@ func Default() *Config {
 		Theme:               "dark",
 		Language:            "es",
 		MaxLogLines:         1000,
-		// Encoding defaults optimizados para estabilidad
+		// Encoding defaults optimizados para ULTRA BAJA LATENCIA (<3s)
 		VideoEncoder:   "libx264",
-		EncoderPreset:  "veryfast",
-		EncoderProfile: "main",
+		EncoderPreset:  "ultrafast", // ultrafast para mínima latencia de encoding
+		EncoderProfile: "baseline",  // baseline para menor complejidad
 		EncoderTune:    "zerolatency",
-		GopSize:        50, // 2 segundos a 25fps
+		GopSize:        15, // 0.5 segundos a 30fps - keyframe cada medio segundo
 		BFrames:        0,  // Sin B-frames para baja latencia
 		// Bitrate Control
 		BitrateMode: "cbr",
 		MaxBitrate:  "5M",
-		BufferSize:  "5M",
+		BufferSize:  "2M", // Buffer reducido para menor latencia
 		CRF:         23,
-		// SRT optimizado para estabilidad
-		SRTLatency:      500,     // 500ms de latencia
-		SRTRecvBuffer:   8388608, // 8MB
-		SRTSendBuffer:   8388608, // 8MB
+		// SRT optimizado para ULTRA BAJA LATENCIA
+		SRTLatency:      120,     // 120ms de latencia (mínimo recomendado para LAN)
+		SRTRecvBuffer:   2097152, // 2MB - reducido para baja latencia
+		SRTSendBuffer:   2097152, // 2MB - reducido para baja latencia
 		SRTOverheadBW:   25,      // 25% overhead
 		SRTPeerIdleTime: 5000,    // 5 segundos
 	}

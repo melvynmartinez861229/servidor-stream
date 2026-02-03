@@ -435,10 +435,14 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		args = append(args, "-stream_loop", "-1")
 	}
 
-	// Input
+	// Input - optimizado para baja latencia
 	args = append(args,
 		"-re",                // Sincronización de tiempo real
 		"-fflags", "+genpts", // Generar timestamps correctos
+		"-fflags", "+nobuffer", // Sin buffering adicional
+		"-avioflags", "direct", // I/O directo sin cache
+		"-probesize", "32", // Probe mínimo para inicio rápido
+		"-analyzeduration", "0", // No analizar duración para inicio instantáneo
 		"-i", config.InputPath,
 	)
 
@@ -528,10 +532,10 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 			"-nal-hrd", "cbr", // CBR estricto
 		)
 
-		// GOP y B-Frames para libx264
+		// GOP y B-Frames para libx264 - ultra baja latencia
 		gopSize := config.GopSize
 		if gopSize <= 0 {
-			gopSize = 50 // 2 segundos a 25fps por defecto
+			gopSize = 15 // 0.5 segundos a 30fps - keyframes frecuentes para baja latencia
 		}
 		args = append(args,
 			"-g", strconv.Itoa(gopSize),
@@ -601,21 +605,21 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		srtHost = "0.0.0.0"
 	}
 
-	// Parámetros SRT
+	// Parámetros SRT optimizados para baja latencia
 	srtLatency := config.SRTLatency
 	if srtLatency <= 0 {
-		srtLatency = 500 // 500ms por defecto
+		srtLatency = 120 // 120ms por defecto (ultra baja latencia en LAN)
 	}
 	srtLatencyUs := srtLatency * 1000 // Convertir a microsegundos
 
 	srtRecvBuf := config.SRTRecvBuffer
 	if srtRecvBuf <= 0 {
-		srtRecvBuf = 8388608 // 8MB por defecto
+		srtRecvBuf = 2097152 // 2MB por defecto (reducido para baja latencia)
 	}
 
 	srtSendBuf := config.SRTSendBuffer
 	if srtSendBuf <= 0 {
-		srtSendBuf = 8388608 // 8MB por defecto
+		srtSendBuf = 2097152 // 2MB por defecto (reducido para baja latencia)
 	}
 
 	srtOverhead := config.SRTOverheadBW
@@ -623,20 +627,24 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 		srtOverhead = 25 // 25% por defecto
 	}
 
-	// Calcular muxrate basado en bitrate
-	muxrate := "8M"
+	// Calcular muxrate basado en bitrate - ajustado para baja latencia
+	muxrate := "6M" // Reducido para menor buffering
 
-	// Construir URL SRT con parámetros configurables
+	// Construir URL SRT con parámetros optimizados para ultra baja latencia
 	srtURL := fmt.Sprintf(
-		"srt://%s:%d?mode=listener&latency=%d&pkt_size=1316&rcvbuf=%d&sndbuf=%d&maxbw=-1&oheadbw=%d&listen_timeout=-1",
+		"srt://%s:%d?mode=listener&latency=%d&pkt_size=1316&rcvbuf=%d&sndbuf=%d&maxbw=-1&oheadbw=%d&listen_timeout=-1&tlpktdrop=1&nakreport=1",
 		srtHost, srtPort, srtLatencyUs, srtRecvBuf, srtSendBuf, srtOverhead,
 	)
 
 	args = append(args,
 		"-f", "mpegts",
 		"-mpegts_copyts", "1",
+		"-mpegts_flags", "latm", // Modo de baja latencia para MPEG-TS
+		"-flush_packets", "1", // Flush inmediato de paquetes
 		"-muxrate", muxrate,
-		"-pcr_period", "20",
+		"-pcr_period", "20", // PCR cada 20ms para sincronización precisa
+		"-muxdelay", "0.1", // Delay mínimo del muxer (100ms)
+		"-max_delay", "100000", // Máximo delay 100ms
 		srtURL,
 	)
 
