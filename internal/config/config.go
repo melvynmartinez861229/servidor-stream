@@ -150,7 +150,7 @@ func Default() *Config {
 		BufferSize:  "2M", // Buffer reducido para menor latencia
 		CRF:         23,
 		// SRT optimizado para ULTRA BAJA LATENCIA
-		SRTLatency:      120,     // 120ms de latencia (mínimo recomendado para LAN)
+		SRTLatency:      200,     // 200ms - estable para LAN con carga
 		SRTRecvBuffer:   2097152, // 2MB - reducido para baja latencia
 		SRTSendBuffer:   2097152, // 2MB - reducido para baja latencia
 		SRTOverheadBW:   25,      // 25% overhead

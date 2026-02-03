@@ -614,7 +614,7 @@ func (m *Manager) buildFFmpegArgs(config StreamConfig) []string {
 	// Parámetros SRT optimizados para baja latencia
 	srtLatency := config.SRTLatency
 	if srtLatency <= 0 {
-		srtLatency = 120 // 120ms por defecto (ultra baja latencia en LAN)
+		srtLatency = 200 // 200ms por defecto (estable para LAN con carga)
 	}
 	srtLatencyUs := srtLatency * 1000 // Convertir a microsegundos
 
