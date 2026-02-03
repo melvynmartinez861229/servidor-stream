@@ -713,7 +713,7 @@ func (m *Manager) parseProgress(channelID string, proc *ffmpegProcess) {
 				}
 				log.Printf("[FFmpeg %s] → Streaming: %s", channelID, progressInfo)
 				lastProgressLog = time.Now()
-				
+
 				// Emitir evento de progreso (sin llenar memoria)
 				m.emitEvent(Event{
 					Type:      EventProgress,

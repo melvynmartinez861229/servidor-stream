@@ -532,7 +532,7 @@ func (a *App) GetVideoFiles(dirPath string) ([]string, error) {
 // PlayVideoOnChannel reproduce un video específico en un canal
 func (a *App) PlayVideoOnChannel(channelID, videoPath string) error {
 	a.AddLog("DEBUG", fmt.Sprintf("→ PlayVideoOnChannel: channelID=%s, videoPath=%s", channelID, videoPath), channelID)
-	
+
 	ch, err := a.channelManager.Get(channelID)
 	if err != nil {
 		a.AddLog("ERROR", fmt.Sprintf("Canal no encontrado en PlayVideoOnChannel: %v", err), channelID)
@@ -779,7 +779,7 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 
 func (a *App) handlePlayRequest(clientID string, msg websocket.Message) []byte {
 	a.AddLog("DEBUG", fmt.Sprintf("→ handlePlayRequest: buscando canal '%s'", msg.ChannelID), "")
-	
+
 	// Verificar que el canal existe - buscar por ID o por Label
 	ch, err := a.channelManager.Get(msg.ChannelID)
 	if err != nil {
@@ -803,7 +803,7 @@ func (a *App) handlePlayRequest(clientID string, msg websocket.Message) []byte {
 		a.AddLog("ERROR", "No se especificó filePath y el canal no tiene video asignado", ch.ID)
 		return websocket.ErrorResponse("missing_file_path", "Se requiere especificar filePath porque el canal no tiene video asignado")
 	}
-	
+
 	a.AddLog("DEBUG", fmt.Sprintf("→ Ruta recibida: %s", videoPath), ch.ID)
 
 	// Iniciar reproducción usando el ID real del canal
