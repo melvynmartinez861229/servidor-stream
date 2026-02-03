@@ -767,25 +767,40 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 }
 
 func (a *App) handlePlayRequest(clientID string, msg websocket.Message) []byte {
-	// Verificar que el canal existe
+	// Verificar que el canal existe - buscar por ID o por Label
 	ch, err := a.channelManager.Get(msg.ChannelID)
 	if err != nil {
-		return websocket.ErrorResponse("channel_not_found", "Canal no encontrado")
+		// Buscar por label si no se encontró por ID
+		ch = a.channelManager.GetByLabel(msg.ChannelID)
+		if ch == nil {
+			a.AddLog("ERROR", fmt.Sprintf("Canal no encontrado: %s (intentado por ID y Label)", msg.ChannelID), "")
+			return websocket.ErrorResponse("channel_not_found", fmt.Sprintf("Canal '%s' no encontrado. Verifica que el canal exista con ese nombre.", msg.ChannelID))
+		}
+		a.AddLog("DEBUG", fmt.Sprintf("Canal encontrado por label: %s -> ID: %s", msg.ChannelID, ch.ID), ch.ID)
 	}
 
 	videoPath := msg.FilePath
 	if videoPath == "" {
 		videoPath = ch.VideoPath
 	}
+	
+	if videoPath == "" {
+		a.AddLog("ERROR", "No se especificó filePath y el canal no tiene video asignado", ch.ID)
+		return websocket.ErrorResponse("missing_file_path", "Se requiere especificar filePath porque el canal no tiene video asignado")
+	}
 
-	// Iniciar reproducción
-	err = a.PlayVideoOnChannel(msg.ChannelID, videoPath)
+	// Iniciar reproducción usando el ID real del canal
+	err = a.PlayVideoOnChannel(ch.ID, videoPath)
 	if err != nil {
 		return websocket.ErrorResponse("play_error", err.Error())
 	}
 
-	serverIP := a.getServerIP()
-	srtURL := fmt.Sprintf("srt://%s:%d", serverIP, ch.SRTPort)
+	// Usar el SRTHost configurado en el canal, o detectar automáticamente si es 0.0.0.0
+	displayHost := ch.SRTHost
+	if displayHost == "" || displayHost == "0.0.0.0" {
+		displayHost = a.getServerIP()
+	}
+	srtURL := fmt.Sprintf("srt://%s:%d", displayHost, ch.SRTPort)
 
 	return websocket.SuccessResponse("play_started", map[string]interface{}{
 		"channelId":  ch.ID,
@@ -797,21 +812,36 @@ func (a *App) handlePlayRequest(clientID string, msg websocket.Message) []byte {
 }
 
 func (a *App) handleStopRequest(clientID string, msg websocket.Message) []byte {
-	err := a.StopChannel(msg.ChannelID)
+	// Buscar canal por ID o por Label
+	ch, err := a.channelManager.Get(msg.ChannelID)
+	if err != nil {
+		ch = a.channelManager.GetByLabel(msg.ChannelID)
+		if ch == nil {
+			a.AddLog("ERROR", fmt.Sprintf("Canal no encontrado: %s", msg.ChannelID), "")
+			return websocket.ErrorResponse("channel_not_found", fmt.Sprintf("Canal '%s' no encontrado", msg.ChannelID))
+		}
+	}
+	
+	err = a.StopChannel(ch.ID)
 	if err != nil {
 		return websocket.ErrorResponse("stop_error", err.Error())
 	}
 
 	return websocket.SuccessResponse("play_stopped", map[string]interface{}{
-		"channelId": msg.ChannelID,
+		"channelId": ch.ID,
+		"channelLabel": ch.Label,
 	})
 }
 
 func (a *App) handleStatusRequest(clientID string, msg websocket.Message) []byte {
 	if msg.ChannelID != "" {
+		// Buscar canal por ID o por Label
 		ch, err := a.channelManager.Get(msg.ChannelID)
 		if err != nil {
-			return websocket.ErrorResponse("channel_not_found", "Canal no encontrado")
+			ch = a.channelManager.GetByLabel(msg.ChannelID)
+			if ch == nil {
+				return websocket.ErrorResponse("channel_not_found", fmt.Sprintf("Canal '%s' no encontrado", msg.ChannelID))
+			}
 		}
 		return websocket.SuccessResponse("channel_status", ch)
 	}
