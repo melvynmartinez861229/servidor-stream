@@ -227,10 +227,17 @@ func (m *Manager) startInternal(config StreamConfig, enableFallback bool) error 
 		encoderUsed = "libx264"
 	}
 
+	// Log del comando FFmpeg completo para debugging (solo primeros 500 caracteres)
+	cmdString := fmt.Sprintf("%s %v", m.ffmpegPath, strings.Join(args, " "))
+	if len(cmdString) > 500 {
+		cmdString = cmdString[:500] + "..."
+	}
+	log.Printf("[FFmpeg %s] Comando: %s", config.ChannelID, cmdString)
+
 	m.emitEvent(Event{
 		Type:      EventStarted,
 		ChannelID: config.ChannelID,
-		Message:   fmt.Sprintf("Stream SRT iniciado en puerto %d (encoder: %s)", srtPort, encoderUsed),
+		Message:   fmt.Sprintf("FFmpeg iniciado: PID=%d, Puerto=%d, Encoder=%s, Resolución=%dx%d@%dfps", cmd.Process.Pid, srtPort, encoderUsed, config.Width, config.Height, config.FrameRate),
 		Data: map[string]interface{}{
 			"pid":        cmd.Process.Pid,
 			"streamName": config.SRTStreamName,
@@ -238,6 +245,9 @@ func (m *Manager) startInternal(config StreamConfig, enableFallback bool) error 
 			"srtPort":    srtPort,
 			"srtUrl":     fmt.Sprintf("srt://IP_SERVIDOR:%d", srtPort),
 			"encoder":    encoderUsed,
+			"resolution": fmt.Sprintf("%dx%d", config.Width, config.Height),
+			"frameRate":  config.FrameRate,
+			"bitrate":    config.VideoBitrate,
 		},
 	})
 
@@ -668,20 +678,64 @@ func (m *Manager) monitorProcess(channelID string, proc *ffmpegProcess) {
 // parseProgress lee la salida de FFmpeg para logging y detección de errores
 func (m *Manager) parseProgress(channelID string, proc *ffmpegProcess) {
 	scanner := bufio.NewScanner(proc.stderr)
+	lastProgressLog := time.Now()
+	progressLogInterval := 30 * time.Second // Log de progreso cada 30 segundos
+	streamingStarted := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		lineLower := strings.ToLower(line)
 
-		// Log para debugging
-		log.Printf("[FFmpeg %s] %s", channelID, line)
+		// Detectar cuando un cliente SRT se conecta
+		if strings.Contains(lineLower, "srt: accepted connection") || strings.Contains(lineLower, "srt: listener accepted") {
+			log.Printf("[FFmpeg %s] ✓ Cliente SRT conectado", channelID)
+			m.emitEvent(Event{
+				Type:      EventProgress,
+				ChannelID: channelID,
+				Message:   "Cliente SRT conectado - streaming activo",
+			})
+			streamingStarted = true
+		}
 
-		// Detectar errores
-		if strings.Contains(strings.ToLower(line), "error") {
+		// Detectar progreso de frames (indica que está strimeando)
+		if strings.Contains(line, "frame=") && strings.Contains(line, "fps=") {
+			if !streamingStarted {
+				log.Printf("[FFmpeg %s] ✓ Streaming iniciado - generando frames", channelID)
+				streamingStarted = true
+			}
+
+			// Log periódico (cada 30s) para confirmar que sigue strimeando
+			if time.Since(lastProgressLog) >= progressLogInterval {
+				// Extraer info básica del progreso
+				progressInfo := line
+				if len(progressInfo) > 150 {
+					progressInfo = progressInfo[:150] + "..."
+				}
+				log.Printf("[FFmpeg %s] → Streaming: %s", channelID, progressInfo)
+				lastProgressLog = time.Now()
+				
+				// Emitir evento de progreso (sin llenar memoria)
+				m.emitEvent(Event{
+					Type:      EventProgress,
+					ChannelID: channelID,
+					Message:   "Streaming activo",
+					Data: map[string]interface{}{
+						"uptime": time.Since(proc.startTime).String(),
+					},
+				})
+			}
+		}
+
+		// Log completo solo para errores y warnings importantes
+		if strings.Contains(lineLower, "error") && !strings.Contains(lineLower, "no error") {
+			log.Printf("[FFmpeg %s] ✗ ERROR: %s", channelID, line)
 			m.emitEvent(Event{
 				Type:      EventError,
 				ChannelID: channelID,
 				Message:   line,
 			})
+		} else if strings.Contains(lineLower, "warning") {
+			log.Printf("[FFmpeg %s] ⚠ WARNING: %s", channelID, line)
 		}
 	}
 }

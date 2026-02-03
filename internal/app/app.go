@@ -531,13 +531,24 @@ func (a *App) GetVideoFiles(dirPath string) ([]string, error) {
 
 // PlayVideoOnChannel reproduce un video específico en un canal
 func (a *App) PlayVideoOnChannel(channelID, videoPath string) error {
+	a.AddLog("DEBUG", fmt.Sprintf("→ PlayVideoOnChannel: channelID=%s, videoPath=%s", channelID, videoPath), channelID)
+	
 	ch, err := a.channelManager.Get(channelID)
 	if err != nil {
+		a.AddLog("ERROR", fmt.Sprintf("Canal no encontrado en PlayVideoOnChannel: %v", err), channelID)
 		return err
 	}
 
+	// Verificar que el archivo existe
+	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
+		a.AddLog("ERROR", fmt.Sprintf("✗ Archivo NO existe: %s", videoPath), channelID)
+		return fmt.Errorf("archivo no encontrado: %s", videoPath)
+	}
+	a.AddLog("DEBUG", fmt.Sprintf("✓ Archivo verificado: %s", videoPath), channelID)
+
 	// Si el canal está activo, detenerlo primero
 	if ch.Status == channel.StatusActive {
+		a.AddLog("DEBUG", "→ Canal activo, deteniendo stream anterior...", channelID)
 		a.ffmpegManager.Stop(channelID)
 	}
 
@@ -767,6 +778,8 @@ func (a *App) handlePlayVideoRequest(clientID string, msg websocket.Message) []b
 }
 
 func (a *App) handlePlayRequest(clientID string, msg websocket.Message) []byte {
+	a.AddLog("DEBUG", fmt.Sprintf("→ handlePlayRequest: buscando canal '%s'", msg.ChannelID), "")
+	
 	// Verificar que el canal existe - buscar por ID o por Label
 	ch, err := a.channelManager.Get(msg.ChannelID)
 	if err != nil {
@@ -776,7 +789,9 @@ func (a *App) handlePlayRequest(clientID string, msg websocket.Message) []byte {
 			a.AddLog("ERROR", fmt.Sprintf("Canal no encontrado: %s (intentado por ID y Label)", msg.ChannelID), "")
 			return websocket.ErrorResponse("channel_not_found", fmt.Sprintf("Canal '%s' no encontrado. Verifica que el canal exista con ese nombre.", msg.ChannelID))
 		}
-		a.AddLog("DEBUG", fmt.Sprintf("Canal encontrado por label: %s -> ID: %s", msg.ChannelID, ch.ID), ch.ID)
+		a.AddLog("DEBUG", fmt.Sprintf("✓ Canal encontrado por label: %s -> ID: %s", msg.ChannelID, ch.ID), ch.ID)
+	} else {
+		a.AddLog("DEBUG", fmt.Sprintf("✓ Canal encontrado por ID: %s", ch.ID), ch.ID)
 	}
 
 	videoPath := msg.FilePath
@@ -788,6 +803,8 @@ func (a *App) handlePlayRequest(clientID string, msg websocket.Message) []byte {
 		a.AddLog("ERROR", "No se especificó filePath y el canal no tiene video asignado", ch.ID)
 		return websocket.ErrorResponse("missing_file_path", "Se requiere especificar filePath porque el canal no tiene video asignado")
 	}
+	
+	a.AddLog("DEBUG", fmt.Sprintf("→ Ruta recibida: %s", videoPath), ch.ID)
 
 	// Iniciar reproducción usando el ID real del canal
 	err = a.PlayVideoOnChannel(ch.ID, videoPath)
@@ -876,9 +893,24 @@ func (a *App) onFFmpegEvent(event ffmpeg.Event) {
 
 	switch event.Type {
 	case ffmpeg.EventStarted:
-		a.AddLog("INFO", fmt.Sprintf("FFmpeg iniciado para canal %s", event.ChannelID), event.ChannelID)
+		// Extraer información adicional del evento
+		msg := event.Message
+		if event.Data != nil {
+			if pid, ok := event.Data["pid"].(int); ok {
+				if srtPort, ok := event.Data["srtPort"].(int); ok {
+					msg = fmt.Sprintf("%s | PID: %d | Puerto SRT: %d", msg, pid, srtPort)
+				}
+			}
+		}
+		a.AddLog("INFO", fmt.Sprintf("✓ FFmpeg strimeando: %s", msg), event.ChannelID)
 		// No cambiar status aquí - ya se hizo en PlayTestPattern/StartChannel
 		return // No emitir evento duplicado
+	case ffmpeg.EventProgress:
+		// Log periódico de progreso (ya viene limitado desde el manager)
+		if event.Message != "" {
+			a.AddLog("INFO", fmt.Sprintf("→ %s", event.Message), event.ChannelID)
+		}
+		return // No cambiar status
 	case ffmpeg.EventWarning:
 		// Encoder de hardware no disponible, usando fallback
 		a.AddLog("WARNING", event.Message, event.ChannelID)
