@@ -135,7 +135,7 @@ func (m *Manager) StartWithFallback(config StreamConfig) error {
 // startInternal implementación interna de Start con opción de fallback
 func (m *Manager) startInternal(config StreamConfig, enableFallback bool) error {
 	m.mutex.Lock()
-	
+
 	// Si ya existe un proceso, eliminarlo rápidamente (no es error, solo reemplazar)
 	if proc, exists := m.processes[config.ChannelID]; exists {
 		if proc.cmd != nil && proc.cmd.Process != nil {
@@ -147,7 +147,7 @@ func (m *Manager) startInternal(config StreamConfig, enableFallback bool) error 
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
-	
+
 	m.mutex.Unlock()
 
 	// Verificar que el archivo de entrada existe
