@@ -214,7 +214,7 @@ func (a *App) StartChannel(channelID string) error {
 		FrameRate:     frameRate,
 		Width:         width,
 		Height:        height,
-		Loop:          true, // Loop por defecto
+		Loop:          false, // Sin loop - reproducir una sola vez
 		// Configuración avanzada
 		VideoEncoder:   a.config.VideoEncoder,
 		EncoderPreset:  a.config.EncoderPreset,
@@ -546,10 +546,13 @@ func (a *App) PlayVideoOnChannel(channelID, videoPath string) error {
 	}
 	a.AddLog("DEBUG", fmt.Sprintf("✓ Archivo verificado: %s", videoPath), channelID)
 
-	// Si el canal está activo, detenerlo primero
+	// Si el canal está activo, detenerlo de forma ultra rápida
 	if ch.Status == channel.StatusActive {
-		a.AddLog("DEBUG", "→ Canal activo, deteniendo stream anterior...", channelID)
+		a.AddLog("DEBUG", "→ Canal activo, cambiando video rápidamente...", channelID)
+		// Stop ahora es ultra rápido (~50ms)
 		a.ffmpegManager.Stop(channelID)
+		// Pequeña espera adicional solo si es necesario (Windows puede necesitar liberar el socket)
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	// Actualizar la ruta del video
@@ -579,7 +582,7 @@ func (a *App) PlayVideoOnChannel(channelID, videoPath string) error {
 		FrameRate:     frameRate,
 		Width:         width,
 		Height:        height,
-		Loop:          true,
+		Loop:          false, // Sin loop - reproducir una sola vez
 	}
 
 	a.AddLog("INFO", fmt.Sprintf("Iniciando FFmpeg: %dx%d @ %dfps en %s:%d", width, height, frameRate, ch.SRTHost, ch.SRTPort), channelID)

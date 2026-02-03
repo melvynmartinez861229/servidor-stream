@@ -135,14 +135,20 @@ func (m *Manager) StartWithFallback(config StreamConfig) error {
 // startInternal implementación interna de Start con opción de fallback
 func (m *Manager) startInternal(config StreamConfig, enableFallback bool) error {
 	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	// Verificar si ya existe un proceso para este canal
+	
+	// Si ya existe un proceso, eliminarlo rápidamente (no es error, solo reemplazar)
 	if proc, exists := m.processes[config.ChannelID]; exists {
 		if proc.cmd != nil && proc.cmd.Process != nil {
-			return fmt.Errorf("ya existe un proceso activo para el canal %s", config.ChannelID)
+			log.Printf("[FFmpeg] Reemplazando proceso existente para canal %s", config.ChannelID)
+			proc.stopped = true
+			proc.cmd.Process.Kill()
+			delete(m.processes, config.ChannelID)
+			// Breve pausa para liberar puerto
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
+	
+	m.mutex.Unlock()
 
 	// Verificar que el archivo de entrada existe
 	if _, err := os.Stat(config.InputPath); os.IsNotExist(err) {
@@ -211,7 +217,9 @@ func (m *Manager) startInternal(config StreamConfig, enableFallback bool) error 
 		stderr:    stderr,
 	}
 
+	m.mutex.Lock()
 	m.processes[config.ChannelID] = proc
+	m.mutex.Unlock()
 
 	// Monitorear proceso en goroutine
 	go m.monitorProcess(config.ChannelID, proc)
@@ -300,21 +308,17 @@ func (m *Manager) Stop(channelID string) error {
 		return nil // No hay proceso, no es error
 	}
 
-	// Cancelar contexto (termina el proceso)
+	// Kill inmediato sin esperar - Windows libera el puerto automáticamente
+	if proc.cmd != nil && proc.cmd.Process != nil {
+		proc.cmd.Process.Kill()
+		// Espera mínima para que Windows procese el kill (solo 50ms)
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Cancelar contexto después del kill
 	if proc.cancel != nil {
 		proc.cancel()
 	}
-
-	// Esperar para terminación limpia y liberación del puerto
-	time.Sleep(1 * time.Second)
-
-	// Forzar terminación si sigue corriendo
-	if proc.cmd != nil && proc.cmd.Process != nil {
-		proc.cmd.Process.Kill()
-	}
-
-	// Esperar un poco más para que el puerto se libere
-	time.Sleep(500 * time.Millisecond)
 
 	m.mutex.Lock()
 	delete(m.processes, channelID)
@@ -326,6 +330,8 @@ func (m *Manager) Stop(channelID string) error {
 		ChannelID: channelID,
 		Message:   "Stream detenido",
 	})
+
+	log.Printf("[FFmpeg] Proceso %s detenido rápidamente", channelID)
 
 	return nil
 }
